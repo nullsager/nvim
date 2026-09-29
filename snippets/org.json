@@ -1,0 +1,27 @@
+{
+  "org table": {
+    "prefix": "<t",
+    "description": "Org 表格：表头 + 分隔线",
+    "body": [
+      "| ${1:列1} | ${2:列2} |",
+      "|--------|--------|"
+    ]
+  },
+  "todo heading": {
+    "prefix": "tdo",
+    "description": "TODO 标题（含 SCHEDULED 计划行）",
+    "body": [
+      "* TODO ${1:任务描述}",
+      "SCHEDULED: ${2:<2026-08-13 Thu>}"
+    ]
+  },
+  "org source block": {
+    "prefix": "src",
+    "description": "Org 代码块（#+begin_src）",
+    "body": [
+      "#+begin_src ${1:lang}",
+      "$0",
+      "#+end_src"
+    ]
+  }
+}

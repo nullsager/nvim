@@ -1,0 +1,28 @@
+# Neovim 运行日志
+*.log
+
+# Vim / Neovim 临时文件、交换文件和备份文件
+*.swp
+*.swo
+*.swn
+*.swnx
+*~
+*.bak
+
+# 本地生成的编辑器状态
+.undo/
+.sessions/
+.views/
+
+# 本地插件目录（当前配置使用 vim.pack 时通常位于 Neovim data 目录）
+site/
+.local/
+
+# 操作系统生成的文件
+.DS_Store
+Thumbs.db
+
+# 本地环境变量或密钥文件
+.env
+.env.*
+!.env.example
