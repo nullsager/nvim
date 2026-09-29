@@ -16,8 +16,12 @@ vim.o.winborder = "single"
 -- ---------------------------------------------------------
 -- 剪贴板与滚动
 -- ---------------------------------------------------------
-vim.opt.clipboard:append("unnamedplus") -- wsl install wl-clipboard
--- vim.opt.clipboard = "unnamedplus"
+-- 本地使用 wl-copy/xclip；SSH 里的 Neovim 没有远程桌面剪贴板，改用
+-- OSC 52 让终端把复制内容转发到本地系统剪贴板。
+if vim.env.SSH_TTY or vim.env.SSH_CONNECTION then
+  vim.g.clipboard = "osc52"
+end
+vim.opt.clipboard:append("unnamedplus")
 vim.opt.scrolloff = 10
 vim.opt.sidescrolloff = 10
 
@@ -64,4 +68,3 @@ vim.g.netrw_banner = 0
 vim.g.netrw_browse_split = 4
 -- 当分割窗口时，新的窗口在右边
 vim.g.netrw_altv = 1
-
