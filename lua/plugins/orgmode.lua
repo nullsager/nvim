@@ -4,6 +4,9 @@
 
 local org_path = "/home/lc/Documents/org"
 
+if vim.fn.isdirectory(org_path) ~= 1 then
+  return
+end
 -- conceal 依赖按文件类型局部设置，避免影响代码文件：
 --   org        隐藏链接语法，只显示描述
 --   markdown / codecompanion  render-markdown 的渲染依赖 conceal
