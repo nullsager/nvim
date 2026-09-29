@@ -4,6 +4,10 @@
 
 local notes_path = "/home/lc/Documents/notes"
 
+if vim.fn.isdirectory(notes_path) ~= 1 then
+  return
+end
+
 require("obsidian").setup({
   -- 使用新版统一命令，例如 :Obsidian backlinks。
   legacy_commands = false,
