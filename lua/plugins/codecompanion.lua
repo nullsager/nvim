@@ -4,6 +4,11 @@
 --   DEEPSEEK_API_KEY    DeepSeek 官方 key
 --   ANTHROPIC_API_KEY   Anthropic 官方 key
 --
+-- 当前 DeepSeek 默认模型。官方提供稳定的 `deepseek-flash` 别名；
+-- 也可设置 DEEPSEEK_MODEL 固定到某个具体模型 ID。
+-- 官方稳定别名 `deepseek-flash` 会指向当前 Flash 版本。
+local DEEPSEEK_MODEL = vim.env.DEEPSEEK_MODEL or "deepseek-flash"
+
 -- 切换模型的几种方式：
 --   1. chat 窗口里按 `ga`   —— 插件内置，只影响当前这个对话
 --   2. <leader>am           —— 改默认模型，chat / inline / cmd 一起生效
@@ -47,11 +52,11 @@ codecompanion.setup({
       -- `:CodeCompanionChat model=xxx` 显式指定的模型重新覆盖成 default，
       -- 用函数形式重新定义 adapter 就没有这个问题。
       deepseek = function()
-        return require("codecompanion.adapters").extend("deepseek", {
+        local adapter = require("codecompanion.adapters").extend("deepseek", {
           schema = {
-            -- DeepSeek V4 默认模型
+            -- DeepSeek 默认模型；可用 DEEPSEEK_MODEL 覆盖
             model = {
-              default = "deepseek-v4-flash",
+              default = DEEPSEEK_MODEL,
             },
 
             -- 默认启用思考模式
@@ -59,7 +64,7 @@ codecompanion.setup({
               default = "enabled",
             },
 
-            -- DeepSeek V4 支持 high 和 max
+            -- DeepSeek V4 系列支持 high 和 max
             reasoning_effort = {
               default = "max",
             },
@@ -75,6 +80,23 @@ codecompanion.setup({
             },
           },
         })
+
+        -- 保留插件内置模型，并把当前/环境变量指定的模型加入菜单。
+        -- 这样新模型即使尚未被 CodeCompanion 内置，也能直接使用。
+        local choices = adapter.schema.model.choices
+        choices["deepseek-flash"] = {
+          formatted_name = "DeepSeek Flash（自动跟随当前版本）",
+          meta = { context_window = 1048576 },
+          opts = { can_reason = true, can_use_tools = true },
+        }
+        if DEEPSEEK_MODEL ~= "deepseek-flash" then
+          choices[DEEPSEEK_MODEL] = {
+            formatted_name = DEEPSEEK_MODEL,
+            meta = { context_window = 1048576 },
+            opts = { can_reason = true, can_use_tools = true },
+          }
+        end
+        return adapter
       end,
 
       anthropic = function()
@@ -147,21 +169,21 @@ codecompanion.setup({
     chat = {
       adapter = {
         name = "deepseek",
-        model = "deepseek-v4-flash",
+        model = DEEPSEEK_MODEL,
       },
     },
 
     inline = {
       adapter = {
         name = "deepseek",
-        model = "deepseek-v4-flash",
+        model = DEEPSEEK_MODEL,
       },
     },
 
     cmd = {
       adapter = {
         name = "deepseek",
-        model = "deepseek-v4-flash",
+        model = DEEPSEEK_MODEL,
       },
     },
   },
@@ -208,12 +230,16 @@ codecompanion.setup({
 -- 常用模型清单，只影响 <leader>am / <leader>aM 的选择菜单；
 -- `ga` 仍然可以选到 adapter 里的全部模型。
 local MODELS = {
-  { adapter = "deepseek", model = "deepseek-v4-flash", label = "DeepSeek V4 Flash" },
+  { adapter = "deepseek", model = "deepseek-flash", label = "DeepSeek Flash（自动跟随当前版本）" },
   { adapter = "deepseek", model = "deepseek-v4-pro", label = "DeepSeek V4 Pro" },
   { adapter = "anthropic", model = "claude-opus-5", label = "Claude Opus 5" },
   { adapter = "anthropic", model = "claude-sonnet-5", label = "Claude Sonnet 5" },
   { adapter = "anthropic", model = "claude-haiku-4-5", label = "Claude Haiku 4.5（便宜快速）" },
 }
+
+if DEEPSEEK_MODEL ~= "deepseek-flash" then
+  table.insert(MODELS, 1, { adapter = "deepseek", model = DEEPSEEK_MODEL, label = "DeepSeek（环境变量指定）" })
+end
 
 local function pick_model(on_choice)
   vim.ui.select(MODELS, {

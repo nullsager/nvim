@@ -3,8 +3,11 @@
 -- minuet 是随打字出现的 AI 补全候选（DeepSeek FIM 接口，经 blink.cmp 补全源）。
 --
 -- 复用 CodeCompanion 的 DEEPSEEK_API_KEY。DeepSeek 已是 openai_fim_compatible
--- 的内置默认 provider（端点 https://api.deepseek.com/beta/completions、
--- 模型 deepseek-v4-flash），只需指定 key。
+-- 的内置默认 provider（端点 https://api.deepseek.com/beta/completions）。
+-- 使用官方稳定的 deepseek-flash 别名；也可用 DEEPSEEK_MODEL 覆盖默认模型，
+-- 或用 DEEPSEEK_FIM_MODEL 为 FIM 接口单独指定模型。
+
+local deepseek_model = vim.env.DEEPSEEK_FIM_MODEL or vim.env.DEEPSEEK_MODEL or "deepseek-flash"
 --
 -- 费用控制：
 --   - enable_predicates 把自动补全限制在代码文件；org / markdown 等文本
@@ -27,6 +30,7 @@ require("minuet").setup({
   provider_options = {
     openai_fim_compatible = {
       name = "deepseek",
+      model = deepseek_model,
       api_key = "DEEPSEEK_API_KEY",
       optional = {
         max_tokens = 256,

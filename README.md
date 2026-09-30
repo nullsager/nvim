@@ -586,8 +586,9 @@ diff 模式下自动跳过；标记位置超出文件行数时安全忽略。
 
 - 随打字出现的 AI 补全候选（菜单中来源名 `minuet`），走 DeepSeek 的
   FIM 补全接口——`openai_fim_compatible` 的内置默认 provider
-  （端点 `api.deepseek.com/beta/completions`，模型 `deepseek-v4-flash`），
-  复用 `DEEPSEEK_API_KEY`，与 CodeCompanion 共用同一个 key
+  （端点 `api.deepseek.com/beta/completions`，默认模型 `deepseek-flash`），
+  复用 `DEEPSEEK_API_KEY`，与 CodeCompanion 共用同一个 key；可用
+  `DEEPSEEK_FIM_MODEL` 为 FIM 接口单独指定模型
 - **只在代码文件自动触发**（c / cpp / python / lua / shell / 前端 / 配置文件，
   名单在 `minuet.lua` 顶部的 `auto_trigger_filetypes`）；org / markdown 等
   文本文件不自动请求，`<A-y>` 手动唤起不受此限制
@@ -647,6 +648,8 @@ TODO 标题 `tdo`、代码块 `src`），详见 [orgmode.md](orgmode.md) 5.5 节
 
 ```bash
 export DEEPSEEK_API_KEY="sk-xxxxxxxx"
+# 可选：覆盖默认模型；不设置时使用官方稳定别名 deepseek-flash
+export DEEPSEEK_MODEL="deepseek-flash"
 export ANTHROPIC_API_KEY="sk-ant-xxxxxxxx"
 ```
 
@@ -654,7 +657,7 @@ export ANTHROPIC_API_KEY="sk-ant-xxxxxxxx"
 
 | adapter | 默认模型 | 参数要点 |
 |---------|----------|----------|
-| deepseek（默认） | `deepseek-v4-flash` | 思考模式默认开启（聊天中显示、默认折叠）；`reasoning_effort = max`；`temperature = 0.4` |
+| deepseek（默认） | `deepseek-flash`（官方稳定别名，可由 `DEEPSEEK_MODEL` 覆盖） | 思考模式默认开启（聊天中显示、默认折叠）；`reasoning_effort = max`；`temperature = 0.4` |
 | anthropic | `claude-opus-5` | 5 系已移除 temperature（配置按模型自动不发，避免 400）；`effort` 五档 low ~ max，默认 high；思考内容以摘要形式显示 |
 
 **模型切换的四种方式**：
@@ -666,7 +669,7 @@ export ANTHROPIC_API_KEY="sk-ant-xxxxxxxx"
 | `<leader>aM` | 用选定模型新开聊天，不动默认值 |
 | `:CodeCompanionChat adapter=anthropic model=claude-opus-5` | 命令行方式，参数有补全 |
 
-`<leader>am` / `<leader>aM` 的菜单是常用模型清单：DeepSeek V4 Flash / Pro、
+`<leader>am` / `<leader>aM` 的菜单是常用模型清单：DeepSeek Flash（自动跟随当前版本）/ V4 Pro、
 Claude Opus 5 / Sonnet 5 / Haiku 4.5（便宜快速）。
 
 > Claude 5 系适配说明：插件 v19 内置模型列表只到 Opus 4.8，配置里把
