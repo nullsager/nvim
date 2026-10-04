@@ -68,3 +68,6 @@ vim.g.netrw_banner = 0
 vim.g.netrw_browse_split = 4
 -- 当分割窗口时，新的窗口在右边
 vim.g.netrw_altv = 1
+
+
+vim.opt.swapfile = false
