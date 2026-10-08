@@ -43,7 +43,7 @@
         ├── mini.lua            mini.nvim 模块：配对 / 环绕 / 注释 / 对齐 / 状态栏 / 标签页
         ├── minuet.lua          AI 行内补全：minuet-ai（DeepSeek FIM，经 blink.cmp）
         ├── completion.lua      自动补全：blink.cmp
-        ├── lsp.lua             LSP：clangd / pyright + 诊断开关
+        ├── lsp.lua             LSP：clangd / pyright、诊断开关、导航键与项目 .venv
         ├── fzf.lua             模糊搜索：fzf-lua
         ├── treesitter.lua      语法高亮 / 折叠 / 缩进 / 语法对象
         ├── obsidian.lua        Obsidian 笔记 + 笔记元素快速插入
@@ -80,7 +80,8 @@ core.options  →  core.keymaps  →  core.terminal  →  core.autocmds  →  pl
 | 工具 | 用途 | 当前状态 |
 |------|------|----------|
 | clangd | C/C++ LSP | 已安装 |
-| pyright | Python LSP | 已安装 |
+| pyright | Python LSP（`pyright-langserver`） | 已安装 |
+| Python 3.12+ | Pyright 解析 Python 与项目依赖 | 已安装；项目建议提供 `.venv` |
 | clang-format | C/C++ 格式化（`<leader>cf`） | 已安装 |
 | ruff | Python 格式化（`<leader>cf`） | 已安装 |
 
@@ -285,16 +286,34 @@ netrw 已定制为树形显示、宽 20%、回车在右侧窗口打开文件。�
 
 ### 5.6 LSP 与诊断
 
+诊断信息默认关闭，可在需要时打开：
+
 | 快捷键 | 模式 | 作用 |
 |--------|------|------|
 | `<leader>ul` | n | 全局开关诊断信息（**默认关闭**） |
 | `gl` | n | 浮窗显示当前行诊断详情 |
+| `<leader>fd` | n | 用 fzf-lua 查看当前文件的诊断列表 |
 
-以下快捷键为 Neovim 0.12 **内置**的 LSP 映射（clangd/pyright attach 后可用）：
+**代码导航（本配置提供）**：这些映射在 LSP 附加到当前 buffer 后按 buffer
+生效，当前配置由 `clangd` 和 `pyright` 使用，也适用于以后启用的其他 LSP。
 
 | 快捷键 | 作用 |
 |--------|------|
-| `K` | 悬浮文档（hover） |
+| `gd` | 跳转到定义（`vim.lsp.buf.definition()`） |
+| `K` | 显示悬浮文档（`hover`） |
+| `gr` | 查找引用（`references`） |
+| `gD` | 跳转到声明（`declaration`） |
+| `gi` | 跳转到实现（`implementation`） |
+| `<C-t>` | 从 LSP 跳转位置返回（Vim 内置 tag stack） |
+
+`gd` 跳转后，Neovim 会把原位置写入 tag stack，因此可以用 `<C-t>` 返回；
+也可以用 `<C-o>` 按 jumplist 返回。`K`、`gd`、`gr` 等映射定义在
+`lua/plugins/lsp.lua` 的 `LspAttach` 自动命令中。
+
+**Neovim 0.12 内置的其他 LSP 映射**（clangd/pyright attach 后可用）：
+
+| 快捷键 | 作用 |
+|--------|------|
 | `grn` | 重命名符号 |
 | `gra` | Code Action |
 | `grr` | 跳转到引用列表 |
@@ -302,6 +321,16 @@ netrw 已定制为树形显示、宽 20%、回车在右侧窗口打开文件。�
 | `grt` | 跳转到类型定义 |
 | `gO` | 文档符号大纲 |
 | `<C-s>`（插入模式） | 函数签名帮助 |
+
+**Python 项目环境**：如果 LSP 根目录下存在 `.venv/bin/python`，配置会把
+它同时传给 Pyright 的 `pythonPath`、`venvPath` 和 `venv`。这样 `torch`、
+`transformers` 等安装在项目虚拟环境中的库可以被解析，`gd` 才能跳转到
+对应的源码或类型文件。检查当前 LSP 状态：
+
+```vim
+:LspInfo
+:checkhealth vim.lsp
+```
 
 ### 5.7 Treesitter 语法对象（plugins/treesitter.lua）
 
@@ -344,7 +373,7 @@ netrw 已定制为树形显示、宽 20%、回车在右侧窗口打开文件。�
 | `<leader>ot` | n | 打开 / 创建今天的日记 |
 | `<leader>on` | n | 输入标题创建新笔记（存入 `draft/`） |
 | `<leader>op` | n | 粘贴剪贴板图片到笔记（存入 `images/`） |
-| `<leader>ov` | n | 保存并在 Obsidian 应用中打开当前笔记 |
+| `<leader>ov` | n | 保存并在 Obsidian 中打开当前 Markdown 文件（支持笔记库外的路径） |
 | `<leader>mc` | n | 插入 Callout（9 种类型菜单选择，见下文） |
 | `<leader>mt` | n | 插入 Markdown 表格（输入 列x行，自动对齐） |
 | `<leader>mb` | n / v | 切换复选框状态 |
@@ -637,8 +666,13 @@ TODO 标题 `tdo`、代码块 `src`），详见 [orgmode.md](orgmode.md) 5.5 节
   生成按中文显示宽度对齐的管道表格，占位文字可直接覆盖输入
 - `<leader>mb` **复选框**：在 `- [ ]` / `- [x]` 间切换
 
-> 注意：多数 `:Obsidian` 子命令需要在笔记库目录内使用；
-> 先用 `<leader>oo` 或 `<leader>of` 进入笔记库即可。
+`<leader>ov` 会先保存当前 buffer，再把当前 Markdown 文件的绝对路径编码为
+`obsidian://open?path=...`，直接交给系统中的 `obsidian` 程序。因此它既支持
+`~/Documents/notes` 中的笔记，也支持项目目录等其他位置的 Markdown 文件。
+中文、空格、`&`、`#` 等路径字符会自动进行 URI 编码。
+
+这和 `:Obsidian open` 不同：后者是笔记库命令，会按当前 workspace 和光标下链接
+解析笔记，适合在 vault 内跳转。大多数其他 `:Obsidian` 子命令仍需要在笔记库内使用。
 
 ### 6.8 CodeCompanion AI 助手
 
@@ -958,6 +992,52 @@ Markdown 文件内生效，其他文件按了只弹提示。
 等文本文件不会自动请求。DeepSeek FIM 计费很低，但介意的话随时按
 `<leader>um` 关闭（等同 `:Minuet blink toggle`）；`<A-y>` 手动唤起
 始终可用。
+
+**Q13：为什么在 `import torch` 上按 `<C-]>` 会显示 `E433: No tags file`？**
+`<C-]>` 是 Vim 的 **tags 跳转**，它会执行类似 `:tag torch` 的查找，
+需要先用 ctags 生成 `tags` 文件；它不会调用 LSP。代码导航请把光标放在
+符号上按 `gd`。如果确实要使用 tags，可在项目根目录执行：
+
+```bash
+ctags -R --languages=Python -f tags .
+```
+
+大型第三方库（尤其是包含 C/C++ 扩展的 PyTorch）不适合完全依赖 tags，
+优先使用已配置的 Pyright LSP。
+
+**Q14：按 `gd` 没有跳转，或者 Pyright 提示找不到 `torch`？**
+先在 Python 文件中执行 `:LspInfo`，确认有 `pyright` 客户端；再检查
+`pyright-langserver` 是否在 PATH 中：
+
+```bash
+command -v pyright-langserver
+```
+
+打开的文件需要位于项目根目录下，并且项目根目录中要有 `.venv/bin/python`。
+如果虚拟环境使用了其他目录名，请在 `lua/plugins/lsp.lua` 的 Pyright 配置中
+调整 `python`、`venvPath` 和 `venv` 的设置。
+
+**Q15：`<leader>ov` 只打开 Obsidian，没有打开当前文件？**
+
+`<leader>ov` 现在会读取当前 buffer 的绝对路径，使用
+`obsidian://open?path=...` 打开 Markdown 文件，不要求文件位于配置的 notes
+vault 中。更新配置后重启 Neovim，在普通模式依次按空格、`o`、`v`。
+
+可以用以下命令确认当前文件路径、映射来源和错误信息：
+
+```vim
+:echo expand('%:p')
+:verbose nmap <leader>ov
+:messages
+```
+
+如果当前文件不是 Markdown、尚未保存，或 Obsidian 程序不存在，映射会显示提示。
+手动检查程序和 URI 处理能力：
+
+```bash
+command -v obsidian
+obsidian 'obsidian://open?path=%2Fhome%2Flc%2FProjects%2Fminimind%2FREADME.md'
+```
 
 ---
 

@@ -12,6 +12,21 @@ require("obsidian").setup({
   -- 使用新版统一命令，例如 :Obsidian backlinks。
   legacy_commands = false,
 
+  -- 直接将 Obsidian URI 交给桌面程序。
+  open = {
+    func = function(uri)
+      if vim.fn.executable("obsidian") ~= 1 then
+        vim.notify("未找到 obsidian 可执行文件", vim.log.levels.ERROR)
+        return
+      end
+
+      local _, err = vim.ui.open(uri, { cmd = { "obsidian" } })
+      if err then
+        vim.notify("打开 Obsidian 失败：" .. err, vim.log.levels.ERROR)
+      end
+    end,
+  },
+
   workspaces = {
     {
       name = "notes",
@@ -97,11 +112,33 @@ vim.keymap.set("n", "<leader>op", "<cmd>Obsidian paste_img<cr>", {
   desc = "Paste image into Obsidian note",
 })
 vim.keymap.set("n", "<leader>ov", function()
-  if vim.bo.modified then
-    vim.cmd.write()
+  local filename = vim.api.nvim_buf_get_name(0)
+  if vim.bo.buftype ~= "" or filename == "" then
+    vim.notify("请先打开一个 Markdown 文件", vim.log.levels.WARN)
+    return
   end
-  vim.cmd("Obsidian open")
-end, { desc = "View current note in Obsidian" })
+  if vim.bo.filetype ~= "markdown" and not filename:lower():match("%.md$") then
+    vim.notify("当前文件不是 Markdown 文件", vim.log.levels.WARN)
+    return
+  end
+
+  if vim.bo.modified then
+    local ok, err = pcall(vim.cmd.write)
+    if not ok then
+      vim.notify("保存 Markdown 文件失败：" .. tostring(err), vim.log.levels.ERROR)
+      return
+    end
+  end
+  if not vim.uv.fs_stat(filename) then
+    vim.notify("Markdown 文件尚未保存到磁盘：" .. filename, vim.log.levels.WARN)
+    return
+  end
+
+  -- 使用绝对路径，因此项目目录、笔记库外的 Markdown 也能交给 Obsidian。
+  -- rfc2396 会编码中文、空格、&、# 等字符，同时把路径分隔符编码为 %2F。
+  local uri = "obsidian://open?path=" .. vim.uri_encode(filename, "rfc2396")
+  Obsidian.opts.open.func(uri)
+end, { desc = "View current Markdown in Obsidian" })
 
 -- ---------------------------------------------------------
 -- 快速插入 Obsidian 元素
