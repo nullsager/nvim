@@ -10,6 +10,9 @@ vim.opt.number = true
 vim.opt.relativenumber = true
 vim.opt.termguicolors = true
 vim.opt.cursorline = true
+-- 超长行折行完整显示（默认 nowrap 会把超出屏幕的部分藏在右侧）
+-- 可用 <leader>uw 随时切换（见 keymaps.lua）
+vim.opt.wrap = true
 vim.cmd.colorscheme("catppuccin")
 vim.o.winborder = "single"
 

@@ -32,7 +32,8 @@ vim.keymap.set({ "i", "n", "t" }, "<C-Right>", "<cmd>vertical resize +3<CR>", { 
 local formatters = {
   c = "clang-format",
   cpp = "clang-format",
-  python = "ruff format -",
+  -- --line-length：行宽上限，ruff 默认 88 会频繁强制折行，放宽到 120
+  python = "ruff format --line-length 120 -",
 }
 
 local function smart_format()
@@ -78,6 +79,16 @@ vim.keymap.set("n", "<leader>zR", "zR", {
 -- netrw 文件管理器
 -- ---------------------------------------------------------
 vim.keymap.set("n", "<leader>e", "<Cmd>Lexplore<CR>", { noremap = true, silent = true, desc = "Toggle Netrw" })
+
+-- ---------------------------------------------------------
+-- 折行（wrap）显示开关
+-- ---------------------------------------------------------
+-- wrap：超长行折行完整显示；nowrap：超出屏幕的部分隐藏，光标过去时横向滚动
+-- 只对当前窗口生效（wrap 是窗口局部选项）
+vim.keymap.set("n", "<leader>uw", function()
+  vim.wo.wrap = not vim.wo.wrap
+  vim.notify(vim.wo.wrap and "wrap：超长行折行显示" or "nowrap：超长行截断隐藏")
+end, { desc = "Toggle line wrap" })
 
 -- ---------------------------------------------------------
 -- 折行（wrap）时按屏幕行上下移动
