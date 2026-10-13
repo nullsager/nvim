@@ -34,16 +34,16 @@
 └── lua/
     ├── core/                   与插件无关的基础配置
     │   ├── options.lua         编辑器选项（含 Leader 键，必须最先加载）
-    │   ├── keymaps.lua         通用快捷键、代码格式化
+    │   ├── keymaps.lua         通用快捷键、代码格式化（<leader>cf，走 LSP）
     │   ├── terminal.lua        底部终端切换（<C-\>）
-    │   └── autocmds.lua        自动命令：fcitx5 输入法同步、恢复光标位置
+    │   └── autocmds.lua        自动命令：fcitx5 输入法同步、恢复光标位置、复制高亮
     └── plugins/                每个插件一个文件，配置与其快捷键放在一起
         ├── init.lua            插件清单（vim.pack.add）+ 各插件模块的加载入口
         ├── which-key.lua       快捷键提示面板：modern 布局 / 图标规则 / 分组标签
-        ├── mini.lua            mini.nvim 模块：配对 / 环绕 / 注释 / 对齐 / 状态栏 / 标签页
+        ├── mini.lua            mini.nvim 模块：配对 / 环绕 / 注释 / 对齐 / 关闭 buffer / 文件管理 / git / 状态栏 / 标签页
         ├── minuet.lua          AI 行内补全：minuet-ai（DeepSeek FIM，经 blink.cmp）
         ├── completion.lua      自动补全：blink.cmp
-        ├── lsp.lua             LSP：clangd / pyright、诊断开关、导航键与项目 .venv
+        ├── lsp.lua             LSP：clangd / pyright / ruff、诊断开关、导航键与项目 .venv
         ├── fzf.lua             模糊搜索：fzf-lua
         ├── treesitter.lua      语法高亮 / 折叠 / 缩进 / 语法对象
         ├── obsidian.lua        Obsidian 笔记 + 笔记元素快速插入
@@ -59,6 +59,7 @@
 core.options  →  core.keymaps  →  core.terminal  →  core.autocmds  →  plugins
 ```
 
+`init.lua` 第一行先调用 `vim.loader.enable()`，缓存编译后的 Lua 模块以加快启动。
 `core.options` 必须最先加载，因为 `vim.g.mapleader` 需要在所有快捷键映射之前设置；
 插件配置放在最后，因为 `vim.pack.add` 会把插件目录加入 `runtimepath`。
 
@@ -82,8 +83,7 @@ core.options  →  core.keymaps  →  core.terminal  →  core.autocmds  →  pl
 | clangd | C/C++ LSP | 已安装 |
 | pyright | Python LSP（`pyright-langserver`） | 已安装 |
 | Python 3.12+ | Pyright 解析 Python 与项目依赖 | 已安装；项目建议提供 `.venv` |
-| clang-format | C/C++ 格式化（`<leader>cf`） | 已安装 |
-| ruff | Python 格式化（`<leader>cf`） | 已安装 |
+| ruff | Python 格式化 / lint / 整理 import（以 LSP 方式运行 `ruff server`，需 ≥ 0.5） | 已安装 |
 
 ### 可选
 
@@ -159,9 +159,11 @@ core.options  →  core.keymaps  →  core.terminal  →  core.autocmds  →  pl
 | `number` + `relativenumber` | 开 | 当前行显示绝对行号，其余行显示相对行号 |
 | `termguicolors` | 开 | 24-bit 真彩色 |
 | `cursorline` | 开 | 高亮光标所在行 |
+| `wrap` + `breakindent` + `linebreak` | 开 | 超长行折行显示；续行保持原缩进，英文在单词边界处折行 |
+| `signcolumn` | `yes` | 标志列常驻，诊断 / git 标记出现时文字不左右跳动 |
 | 主题 | catppuccin | 来自系统运行时（Arch neovim 包附带） |
 | `winborder` | `single` | 所有浮窗使用单线边框 |
-| `clipboard` | `+unnamedplus` | 与系统剪贴板互通（需 wl-clipboard/xclip） |
+| `clipboard` | `+unnamedplus` | 与系统剪贴板互通（需 wl-clipboard/xclip）；SSH 中只用 OSC 52 复制，粘贴读 Neovim 自己的寄存器（从本地粘贴用终端的 Ctrl+Shift+V），避免终端不支持 OSC 52 读取时 `p` 卡住 |
 | `scrolloff` / `sidescrolloff` | 10 | 光标距窗口上下/左右边缘至少保留 10 行/列 |
 | `tabstop` / `shiftwidth` / `softtabstop` | 2 | Tab 宽度与缩进宽度均为 2 |
 | `expandtab` | 开 | 用空格代替 Tab |
@@ -171,7 +173,9 @@ core.options  →  core.keymaps  →  core.terminal  →  core.autocmds  →  pl
 | `ignorecase` + `smartcase` | 开 | 搜索忽略大小写；但搜索词含大写字母时恢复区分 |
 | `inccommand` | `nosplit` | 输入 `:s` 替换命令时实时预览效果 |
 | `updatetime` | 250 | CursorHold 等事件的触发间隔（默认 4000ms 偏慢） |
+| `timeoutlen` | 300 | 组合键等待时间（默认 1000ms）；插入模式的 `jk` 映射让每个 `j` 都要等这么久 |
 | `virtualedit` | `block` | 可视块编辑时光标可越过行尾（改表格、对齐文本好用） |
+| `foldlevelstart` | 99 | 打开文件时折叠全部展开（orgmode 自己设置的折叠层级不受影响） |
 
 ---
 
@@ -185,7 +189,7 @@ core.options  →  core.keymaps  →  core.terminal  →  core.autocmds  →  pl
 |--------|------|------|
 | `jk` | i | 退出插入模式（等同 `<Esc>`） |
 | `jk` | t | 退出终端模式（等同 `<C-\><C-n>`） |
-| `<C-q>` | i / n / t | 强制删除当前 buffer（`:bd!`） |
+| `<C-q>` | i / n / t | 关闭当前 buffer 并保留窗口布局（mini.bufremove）；有未保存修改时先询问 |
 | `<Esc>` | n | 清除搜索高亮 |
 | `j` / `k`（无数字前缀） | n / x | 按屏幕行上下移动：折行文本中一次跨一个视觉行；带数字前缀（`5j`）仍按真实行号跳，配合相对行号使用 |
 | `<Up>` / `<Down>` | n / x | 同上，方向键也改为按屏幕行移动 |
@@ -202,21 +206,58 @@ core.options  →  core.keymaps  →  core.terminal  →  core.autocmds  →  pl
 |--------|------|------|
 | `<C-\>` | n / t | 切换底部终端（占屏 30%，会话保留，详见 [底部终端](#63-底部终端)） |
 
-### 5.3 文件浏览 netrw（内置）
+### 5.3 文件管理 mini.files（plugins/mini.lua）
 
 | 快捷键 | 模式 | 作用 |
 |--------|------|------|
-| `<leader>e` | n | 在左侧开关文件树（`:Lexplore`） |
+| `<leader>e` | n | 打开分栏文件管理器，并定位到当前文件 |
 
-netrw 已定制为树形显示、宽 20%、回车在右侧窗口打开文件。常用内置按键：
+界面是从左到右的多栏：每一栏是一个目录，从左到右依次是上级目录到当前目录，
+光标所在的那一栏较宽。用 `j` / `k` 上下选，`l` 往右进入、`h` 往左退出。
+（右侧预览光标处的文件内容默认关闭，可在 `mini.lua` 里设 `windows = { preview = true }` 打开。）
+
+**核心思路**：每一栏都是一个可以编辑的普通 buffer，一行就是一个文件或目录。
+新建、删除、重命名、移动、复制都用平时编辑文本的按键完成，改完按 `=`，
+它会列出将要执行的文件操作，确认后才真正写到磁盘；不按 `=` 直接 `q` 关闭则什么都不改。
+
+**浏览**：
 
 | 按键 | 作用 |
 |------|------|
-| `回车` | 打开文件 / 展开收起目录 |
-| `%` / `d` | 新建文件 / 新建目录 |
-| `D` / `R` | 删除 / 重命名 |
-| `I` | 显示/隐藏顶部帮助横幅 |
-| `<C-l>` | 刷新列表 |
+| `j` / `k` | 上 / 下移动 |
+| `l` / `h` | 进入目录或打开文件 / 返回上级目录 |
+| `L` | 打开文件并关闭管理器（最常用的"打开"）；对目录同 `l`，并收起左侧分栏 |
+| `H` | 返回上级，并收起右侧分栏 |
+| `<` / `>` | 收起左侧 / 右侧的分栏 |
+| `@` | 跳到当前工作目录（cwd） |
+| `<BS>` | 重置为刚打开时的样子 |
+| `m` + 字母 / `'` + 字母 | 在当前目录设书签 / 跳到书签 |
+| `q` | 关闭 |
+| `g?` | 查看全部按键 |
+
+**修改文件**（改完都要按 `=` 才生效）：
+
+| 操作 | 做法 |
+|------|------|
+| 新建文件 | `o` 新开一行，输入文件名，`<Esc>` |
+| 新建目录 | 同上，名字以 `/` 结尾，如 `utils/` |
+| 一次建多层 | 名字里带路径，如 `a/b/c.py` 会顺带建出 `a/`、`b/` |
+| 重命名 | 直接改那一行的文字（如 `cw`、`A`） |
+| 删除 | `dd` 删掉那一行 |
+| 移动 | `dd` 剪切，`h` / `l` 到目标目录，`p` 粘贴 |
+| 复制 | `yy` 复制，到目标目录 `p` 粘贴 |
+| 同步到磁盘 | `=`，确认弹出的操作列表 |
+
+> ⚠️ **删除是永久删除**，不会进回收站（mini.files 默认 `permanent_delete = true`）。
+> 按 `=` 确认前看清操作列表里的删除项；改错了在 `=` 之前按 `u` 撤销或 `<BS>` 重置即可。
+
+**示例**：在当前项目里新建 `scripts/train.py`
+
+1. `<leader>e` 打开，`h` 退到项目根目录
+2. `o` 输入 `scripts/train.py`，`<Esc>`
+3. `=` 确认，`scripts/` 目录和文件一起建好；光标移到 `train.py` 上按 `L` 打开
+
+> netrw 选项（`options.lua`）仍然保留：`nvim 目录名` 直接打开目录时用的还是 netrw。
 
 ### 5.4 模糊搜索 fzf-lua
 
@@ -295,32 +336,38 @@ netrw 已定制为树形显示、宽 20%、回车在右侧窗口打开文件。�
 | `<leader>fd` | n | 用 fzf-lua 查看当前文件的诊断列表 |
 
 **代码导航（本配置提供）**：这些映射在 LSP 附加到当前 buffer 后按 buffer
-生效，当前配置由 `clangd` 和 `pyright` 使用，也适用于以后启用的其他 LSP。
+生效，当前配置由 `clangd`、`pyright` 和 `ruff` 使用，也适用于以后启用的其他 LSP。
 
 | 快捷键 | 作用 |
 |--------|------|
 | `gd` | 跳转到定义（`vim.lsp.buf.definition()`） |
-| `K` | 显示悬浮文档（`hover`） |
-| `gr` | 查找引用（`references`） |
 | `gD` | 跳转到声明（`declaration`） |
-| `gi` | 跳转到实现（`implementation`） |
 | `<C-t>` | 从 LSP 跳转位置返回（Vim 内置 tag stack） |
 
 `gd` 跳转后，Neovim 会把原位置写入 tag stack，因此可以用 `<C-t>` 返回；
-也可以用 `<C-o>` 按 jumplist 返回。`K`、`gd`、`gr` 等映射定义在
+也可以用 `<C-o>` 按 jumplist 返回。`gd`、`gD` 定义在
 `lua/plugins/lsp.lua` 的 `LspAttach` 自动命令中。
+
+> 不要再单独映射 `gr` / `gi`：`gr` 会和下面内置的 `grn` / `gra` / `grr` 等冲突，
+> 每次按 `gr` 都要等 `timeoutlen` 才生效。
 
 **Neovim 0.12 内置的其他 LSP 映射**（clangd/pyright attach 后可用）：
 
 | 快捷键 | 作用 |
 |--------|------|
+| `K` | 显示悬浮文档（`hover`，Python 由 Pyright 提供） |
 | `grn` | 重命名符号 |
-| `gra` | Code Action |
+| `gra` | Code Action（fzf 选择界面；Python 里含 ruff 的自动修复与整理 import） |
 | `grr` | 跳转到引用列表 |
 | `gri` | 跳转到实现 |
 | `grt` | 跳转到类型定义 |
 | `gO` | 文档符号大纲 |
 | `<C-s>`（插入模式） | 函数签名帮助 |
+
+**Pyright 补全设置**：已关闭 `autoImportCompletions`（输入还没 import 的名字时提示自动导入）。
+开启时 Pyright 每次改动后都要扫描环境里的所有包，在 200+ 个包的大环境里每个新单词的补全要等约 1 秒；
+关闭后降到 0.2–0.6 秒。剩下的延迟主要来自 `transformers` 这类超大库：Pyright 每次改动后都会清空类型缓存，
+重新解析它们的导出表。需要更快的话可以考虑改用 ty（Astral 的 Rust 类型检查器，实测 40–140ms）。
 
 **Python 项目环境**：如果 LSP 根目录下存在 `.venv/bin/python`，配置会把
 它同时传给 Pyright 的 `pythonPath`、`venvPath` 和 `venv`。这样 `torch`、
@@ -366,7 +413,7 @@ netrw 已定制为树形显示、宽 20%、回车在右侧窗口打开文件。�
 
 | 快捷键 | 模式 | 作用 |
 |--------|------|------|
-| `<leader>oo` | n | 用 netrw 浏览整个笔记库 |
+| `<leader>oo` | n | 用 mini.files 浏览整个笔记库 |
 | `<leader>of` | n | 按文件名快速打开笔记（fzf） |
 | `<leader>os` | n | 全文搜索笔记内容 |
 | `<leader>ob` | n | 查看当前笔记的反向链接 |
@@ -509,8 +556,23 @@ netrw 已定制为树形显示、宽 20%、回车在右侧窗口打开文件。�
 | `ga` | x | 交互式对齐选区：按提示输入分隔符（如 `\|`）后回车 |
 | `gA` | x | 同 `ga`，但带实时预览 |
 
+**关闭 buffer**（mini.bufremove）：`<C-q>` 关闭当前 buffer，窗口保留并显示另一个 buffer；
+有未保存的修改时先询问。
+
+**Git**（mini.git / mini.diff）：
+
+| 快捷键 | 模式 | 作用 |
+|--------|------|------|
+| `gh` + 动作 / `ghgh` | n | 暂存目标区域 / 当前 hunk 的改动（`gh` 在可视模式作用于选区） |
+| `gH` + 动作 / `gHgh` | n | 撤销目标区域 / 当前 hunk 的改动，恢复成 git 中的版本 |
+| `[h` / `]h` | n | 上 / 下一处改动（`[H` / `]H` 第一处 / 最后一处） |
+| `<leader>ud` | n | 切换叠加显示：在 buffer 内直接显示删除和修改前的内容 |
+| `:Git …` | 命令 | 在 Neovim 里执行任意 git 子命令（如 `:Git log --oneline`），输出在分屏中显示 |
+
+改动标记显示在行号上（开了行号时用行号着色，否则显示在标志列）。
+
 **状态栏与标签页**（mini.statusline / mini.tabline）：
-状态栏显示模式（Catppuccin 彩色底）、git 分支、诊断计数、文件名、
+状态栏显示模式（Catppuccin 彩色底）、git 分支与改动统计、诊断计数、文件名、
 Org 计时任务（计时中才出现）、filetype 与行列位置（详见 6.12 节）；打开两个以上 buffer 时顶部显示 buffer 标签，
 切换方式：`[b` / `]b`（Vim 内置的上 / 下一个 buffer）、鼠标点击标签、`<leader>fb`。
 
@@ -544,7 +606,9 @@ Org 计时任务（计时中才出现）、filetype 与行列位置（详见 6.1
 位置：`lua/core/autocmds.lua`
 
 重新打开文件时自动跳回上次退出时的光标位置（`BufReadPost` 事件，读取 `"` 标记）。
-diff 模式下自动跳过；标记位置超出文件行数时安全忽略。
+diff 模式和 git 提交信息（`gitcommit` / `gitrebase`）中自动跳过；标记位置超出文件行数时安全忽略。
+
+**复制高亮**（同一文件）：`y` 复制后短暂高亮被复制的文本（`TextYankPost` + `vim.hl.on_yank()`）。
 
 ### 6.3 底部终端
 
@@ -561,15 +625,18 @@ diff 模式下自动跳过；标记位置超出文件行数时安全忽略。
 
 位置：`lua/plugins/treesitter.lua`
 
-**parser 管理**：`treesitter_parsers` 列表中的 23 个 parser 在启动时异步安装缺失项，
-已安装的不会重复安装。想支持新语言，往列表里加一行即可。
+**parser 管理**：文件开头 `install({...})` 列表中的 23 个 parser 在启动时异步安装缺失项，
+已安装的不会重复安装。想支持新语言，往列表里加一项即可。
 
-**按 filetype 启用**（`FileType` 自动命令）：
+**按 filetype 启用**（`FileType` 自动命令）：不维护 filetype 白名单，
+只要该 filetype 对应的 parser 已安装就启用，新增语言只需改安装列表。
 
 1. **高亮**：`vim.treesitter.start()`（含语言注入，如 Markdown 代码块内按各自语言高亮）
-2. **折叠**：`foldmethod = expr`，打开文件时 `foldlevel = 99`（默认全部展开）
-3. **智能缩进**：对 `treesitter_indent_filetypes` 中的语言启用实验性 Treesitter 缩进；
-   若某语言缩进异常，从该表中删掉对应行即可回退到默认缩进
+2. **折叠**：`foldmethod = expr`，只作用于当前窗口里的这个 buffer，切到别的 buffer 不会带过去；
+   打开文件时默认全部展开，由 `options.lua` 的 `foldlevelstart = 99` 控制
+   （orgmode 自己设置的折叠层级不受影响）
+3. **智能缩进**：对 `ts_indent` 列表中的语言启用实验性 Treesitter 缩进；
+   若某语言缩进异常，从列表中删掉即可回退到 Vim 自带的缩进规则
 
 折叠相关按键（Vim 内置）：`zc` 折叠 / `zo` 展开 / `za` 切换当前折叠，
 配合 `<leader>zM` / `<leader>zR` 全局折叠与展开。
@@ -579,21 +646,22 @@ diff 模式下自动跳过；标记位置超出文件行数时安全忽略。
 
 ### 6.5 代码格式化
 
-位置：`lua/core/keymaps.lua`，快捷键 `<leader>cf`
+位置：`lua/core/keymaps.lua`（快捷键 `<leader>cf`），ruff 设置在 `lua/plugins/lsp.lua`
 
-| 文件类型 | 命令 |
-|----------|------|
-| c / cpp | `clang-format`（项目根目录的 `.clang-format` 文件自动生效） |
-| python | `ruff format -` |
+格式化交给当前 buffer 上支持格式化的 LSP（`vim.lsp.buf.format()`）：
 
-安全机制（重构时加固）：
+| 文件类型 | LSP | 说明 |
+|----------|-----|------|
+| c / cpp | clangd | 内置 clang-format，项目根目录的 `.clang-format` 自动生效 |
+| python | ruff（`ruff server`） | 项目 `pyproject.toml` / `ruff.toml` 优先；没有配置时行宽 120 |
 
-- 当前 filetype 无对应工具 → 仅提示，不动 buffer
-- 格式化工具未安装 → 仅提示，不动 buffer（避免 `%!` 过滤器把 shell 报错写进文件）
-- 命令执行失败 → 自动 `undo` 恢复原内容并提示
-- 成功后恢复光标位置与视图
+LSP 只修改有变化的部分，不会像 `%!` 过滤器那样整体替换 buffer，mark、折叠和光标位置都保留。
+当前 buffer 没有支持格式化的 LSP 时只提示，不动 buffer。
 
-**添加新语言**：在 `keymaps.lua` 的 `formatters` 表中加一行，例如 `go = "gofmt"`。
+ruff 和 Pyright 分工：类型检查、跳转、补全、悬浮文档交给 Pyright；ruff 负责格式化、lint
+与整理 import（`gra` 里选 *Organize imports*）。ruff 的悬浮文档已关闭，避免 `K` 弹出两份。
+
+**添加新语言**：在 `lsp.lua` 中启用该语言支持格式化的 LSP 即可。
 
 ### 6.6 补全、Snippet 与 LaTeX
 
@@ -872,15 +940,17 @@ mini.nvim 是一个包含数十个独立模块的插件，这里按需 setup 启
 | mini.surround | 环绕符号的添加 / 删除 / 替换 / 跳转（按键见 5.11 节） |
 | mini.comment | 注释（`gcc` / `gc`，Markdown 代码块内自动识别块内语言注释符） |
 | mini.align | 可视模式交互对齐（`ga`），维护 Markdown 管道表格 |
+| mini.bufremove | `<C-q>` 关闭 buffer 并保留窗口布局 |
+| mini.files | `<leader>e` 分栏文件管理器 |
+| mini.git / mini.diff | `:Git` 命令、状态栏分支信息；行号处的改动标记与 hunk 暂存 / 撤销（按键见 5.11 节） |
 | mini.statusline | 状态栏（自定义布局与配色，见下文） |
 | mini.tabline | buffer 标签页：两个以上 buffer 时显示，`[b` / `]b` 或鼠标点击切换 |
 
 **状态栏定制**（mini.statusline）：布局为
-`模式 → git 分支 + 诊断计数 → 文件名 → Org 计时 → filetype → 行列位置`，
+`模式 → git 分支 + 改动统计 + 诊断计数 → 文件名 → Org 计时 → filetype → 行列位置`，
 模式段用 Catppuccin Mocha 彩色底（NORMAL 蓝 / INSERT 绿 / VISUAL 紫 /
 REPLACE 红 / COMMAND 黄），内容段深灰底，非当前窗口整体灰化。
-git 分支由 `UserGitBranch` 自动命令异步获取写入 `vim.b.gitsigns_head`
-（新仓库显示分支名，detached HEAD 显示 `@短commit`）；配色定义在
+git 分支来自 mini.git，改动统计（`+新增 ~修改 -删除`）来自 mini.diff；配色定义在
 `mini.lua` 的 `statusline_hl()`，换主题时自动重新应用。
 
 Org 计时段（黄色高亮）只在 org clock 运行时出现，形如 `󰅐 0:23/1:00 写周报`
@@ -891,7 +961,7 @@ clock in / out 后由 `orgmode.lua` 里的事件监听触发一次延迟重画�
 静置时则由 `mini.lua` 中的 30 秒定时器推动计时数字继续跳动。
 
 **启用更多模块**：在 `lua/plugins/mini.lua` 中加一行
-`require("mini.xxx").setup({})` 即可（如 mini.files 文件管理器、
+`require("mini.xxx").setup({})` 即可（如
 mini.operators 文本运算符、mini.sessions 会话管理等），
 全部模块列表见 `:help mini.nvim`。
 
@@ -906,9 +976,9 @@ mini.operators 文本运算符、mini.sessions 会话管理等），
 | 加 / 改某插件的快捷键 | `lua/plugins/` 下对应文件（就近原则） |
 | 加插件 | `lua/plugins/init.lua` 清单 + 新建 `lua/plugins/xxx.lua` 配置 |
 | 加语言服务器 | `lua/plugins/lsp.lua` 中 `vim.lsp.enable("xxx")` |
-| 加格式化工具 | `lua/core/keymaps.lua` 的 `formatters` 表 |
+| 加格式化工具 | `lua/plugins/lsp.lua` 中启用支持格式化的 LSP |
 | 启用更多 mini 模块 | `lua/plugins/mini.lua` 加一行 `require("mini.xxx").setup({})` |
-| 加 Treesitter 语言 | `lua/plugins/treesitter.lua` 的 `treesitter_parsers` 等三张表 |
+| 加 Treesitter 语言 | `lua/plugins/treesitter.lua` 开头的 `install({...})` 列表（需要 Treesitter 缩进时再加进 `ts_indent`） |
 | 换 AI 模型 / 参数 | `lua/plugins/codecompanion.lua` 的 `adapters` 段 |
 | 换笔记库路径 | `lua/plugins/obsidian.lua` 顶部的 `notes_path` |
 | 换 Org 文件目录 | `lua/plugins/orgmode.lua` 顶部的 `org_path` |
@@ -932,13 +1002,15 @@ require("plugins.gitsigns")
 
 ## 八、常见问题（FAQ）
 
-**Q1：Python 文件按 `<leader>cf` 提示 "Formatter not installed: ruff"？**
-系统未安装 ruff，执行 `sudo pacman -S ruff` 即可。配置已做防护：
-工具缺失或执行失败都不会破坏 buffer 内容。
+**Q1：Python 文件按 `<leader>cf` 提示 "No LSP formatter for python"？**
+ruff 语言服务器没有启动，通常是系统未安装 ruff：执行 `sudo pacman -S ruff`，
+重新打开文件后用 `:checkhealth vim.lsp` 确认 ruff 已附加。
 
 **Q2：诊断信息（错误波浪线）怎么不见了？**
 本配置**默认全局关闭诊断**（`vim.diagnostic.enable(false)`）。
 按 `<leader>ul` 切换显示，`gl` 随时查看当前行详情。
+打开诊断后，光标所在行的诊断内容会直接展开显示在该行下方（`virtual_lines = { current_line = true }`），
+其他行只显示波浪线和标志列，不会满屏都是诊断文字。
 
 **Q3：which-key 不需要 setup 吗？**
 只声明、不配置也能工作——which-key v3 的 plugin 文件会在启动 500ms 后

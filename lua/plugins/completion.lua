@@ -29,6 +29,11 @@ require("blink.cmp").setup({
     ["<S-Tab>"] = { "snippet_backward", "fallback" },
   },
 
+  -- 输入函数参数时显示签名，并高亮当前正在填写的参数
+  signature = {
+    enabled = true,
+  },
+
   completion = {
     list = {
       selection = {

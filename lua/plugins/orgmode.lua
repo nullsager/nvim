@@ -2,7 +2,7 @@
 -- 与 Obsidian 分工：Markdown 笔记库放 ~/Documents/notes（知识沉淀），
 -- Org 文件放 ~/Documents/org（任务 / 日程 / 待办），两者互不干扰。
 
-local org_path = "/home/lc/Documents/org"
+local org_path = vim.fn.expand("~/Documents/org")
 
 if vim.fn.isdirectory(org_path) ~= 1 then
   return

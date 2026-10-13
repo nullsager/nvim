@@ -2,7 +2,7 @@
 -- 本文件包含 obsidian.nvim 的插件配置，以及笔记相关的自定义功能
 -- （callout / 表格 / 复选框的快速插入）。
 
-local notes_path = "/home/lc/Documents/notes"
+local notes_path = vim.fn.expand("~/Documents/notes")
 
 if vim.fn.isdirectory(notes_path) ~= 1 then
   return
@@ -83,9 +83,9 @@ require("obsidian").setup({
 -- 笔记导航快捷键
 -- ---------------------------------------------------------
 
--- 从任意目录用 netrw 打开整个笔记库；进入后其余 Obsidian 命令即可使用。
+-- 从任意目录用 mini.files 浏览整个笔记库（与 <leader>e 同一个文件管理器）。
 vim.keymap.set("n", "<leader>oo", function()
-  vim.cmd.edit(notes_path)
+  MiniFiles.open(notes_path)
 end, { desc = "Browse Obsidian vault" })
 
 vim.keymap.set("n", "<leader>of", "<cmd>Obsidian quick_switch<cr>", {

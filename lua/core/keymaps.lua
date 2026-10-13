@@ -6,7 +6,7 @@
 -- ---------------------------------------------------------
 vim.keymap.set("i", "jk", "<Esc>", { desc = "Escape insert mode" })
 vim.keymap.set("t", "jk", "<C-\\><C-n>", { desc = "Escape terminal mode" })
-vim.keymap.set({ "i", "n", "t" }, "<C-q>", "<cmd>bd!<CR>", { desc = "Force delete buffer" })
+-- <C-q> 关闭 buffer 见 plugins/mini.lua（mini.bufremove）
 
 -- 清除搜索高亮（搜索设置见 options.lua）
 vim.keymap.set("n", "<Esc>", "<cmd>nohlsearch<CR>", { desc = "Clear search highlight" })
@@ -27,40 +27,19 @@ vim.keymap.set({ "i", "n", "t" }, "<C-Right>", "<cmd>vertical resize +3<CR>", { 
 -- ---------------------------------------------------------
 -- 代码格式化
 -- ---------------------------------------------------------
-
--- filetype → 格式化命令（首个单词必须是可执行文件名）
-local formatters = {
-  c = "clang-format",
-  cpp = "clang-format",
-  -- --line-length：行宽上限，ruff 默认 88 会频繁强制折行，放宽到 120
-  python = "ruff format --line-length 120 -",
-}
-
-local function smart_format()
-  local cmd = formatters[vim.bo.filetype]
-  if not cmd then
-    vim.notify("No formatter configured for " .. vim.bo.filetype, vim.log.levels.WARN)
+-- 交给支持格式化的 LSP：Python 用 ruff server，C/C++ 用 clangd（效果同 clang-format）。
+-- LSP 只修改有变化的部分，不会像 %! 那样整体替换 buffer、丢失 mark 和折叠。
+-- ruff 的行宽等设置见 plugins/lsp.lua。
+local function lsp_format()
+  local clients = vim.lsp.get_clients({ bufnr = 0, method = "textDocument/formatting" })
+  if #clients == 0 then
+    vim.notify("No LSP formatter for " .. vim.bo.filetype, vim.log.levels.WARN)
     return
   end
-
-  -- 格式化工具不存在时直接返回，避免 %! 把 shell 错误信息写进 buffer
-  local exe = vim.split(cmd, " ", { plain = true })[1]
-  if vim.fn.executable(exe) == 0 then
-    vim.notify("Formatter not installed: " .. exe, vim.log.levels.WARN)
-    return
-  end
-
-  local view = vim.fn.winsaveview()
-  vim.cmd("%!" .. cmd)
-  -- 命令执行失败时 buffer 已被替换成错误输出，撤销恢复原内容
-  if vim.v.shell_error ~= 0 then
-    vim.cmd("undo")
-    vim.notify("Format failed: " .. cmd, vim.log.levels.ERROR)
-  end
-  vim.fn.winrestview(view)
+  vim.lsp.buf.format({ timeout_ms = 3000 })
 end
 
-vim.keymap.set("n", "<leader>cf", smart_format, { noremap = true, silent = true, desc = "code format" })
+vim.keymap.set("n", "<leader>cf", lsp_format, { silent = true, desc = "code format" })
 
 -- ---------------------------------------------------------
 -- 折叠
@@ -75,10 +54,7 @@ vim.keymap.set("n", "<leader>zR", "zR", {
   desc = "Open all folds",
 })
 
--- ---------------------------------------------------------
--- netrw 文件管理器
--- ---------------------------------------------------------
-vim.keymap.set("n", "<leader>e", "<Cmd>Lexplore<CR>", { noremap = true, silent = true, desc = "Toggle Netrw" })
+-- 文件管理器 <leader>e 见 plugins/mini.lua（mini.files）
 
 -- ---------------------------------------------------------
 -- 折行（wrap）显示开关
@@ -106,3 +82,30 @@ end, { expr = true, desc = "Up by display line" })
 -- 行首/行尾也跟随屏幕行
 vim.keymap.set({ "n", "x" }, "<Down>", "gj", { desc = "Down by display line" })
 vim.keymap.set({ "n", "x" }, "<Up>", "gk", { desc = "Up by display line" })
+
+-- ---------------------------------------------------------
+-- 粘贴到下一行 / 上一行
+-- ---------------------------------------------------------
+-- 不管寄存器里是整行还是行内片段，都作为新行放到当前行下方 / 上方，
+-- 光标跳到粘贴内容的首行首个非空字符。支持 count（3]p）和寄存器（"a]p）。
+-- 覆盖了内置的 ]p / [p（按当前行缩进调整后粘贴）。
+local function put_linewise(above)
+  return function()
+    local lines = vim.fn.getreg(vim.v.register, 1, true)
+    if #lines == 0 then
+      return
+    end
+    local block = {}
+    for _ = 1, vim.v.count1 do
+      vim.list_extend(block, lines)
+    end
+    local row = vim.api.nvim_win_get_cursor(0)[1]
+    local at = above and row - 1 or row
+    vim.api.nvim_buf_set_lines(0, at, at, false, block)
+    vim.api.nvim_win_set_cursor(0, { at + 1, 0 })
+    vim.cmd("normal! ^")
+  end
+end
+
+vim.keymap.set("n", "]p", put_linewise(false), { desc = "Paste on next line" })
+vim.keymap.set("n", "[p", put_linewise(true), { desc = "Paste on previous line" })

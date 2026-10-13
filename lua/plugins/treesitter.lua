@@ -1,146 +1,47 @@
 -- Treesitter：语法高亮、折叠、智能缩进、语法对象
 
-local treesitter = require("nvim-treesitter")
-
-treesitter.setup({
-  -- 默认安装目录已经足够，一般不需要修改
-  install_dir = vim.fn.stdpath("data") .. "/site",
+-- ---------------------------------------------------------
+-- Parser 安装：启动时异步安装缺少的，已安装的不会重复安装。
+-- 新增语言只需在这里加一项，高亮和折叠会自动启用。
+-- ---------------------------------------------------------
+require("nvim-treesitter").install({
+  "lua", "luadoc", "vim", "vimdoc", "query", -- Neovim 配置
+  "c", "cpp", "python", "bash", -- 编程语言
+  "markdown", "markdown_inline", -- 笔记
+  "json", "yaml", "toml", -- 配置文件
+  "diff", "gitcommit", "gitignore", -- Git
+  "html", "css", "javascript", "typescript", "tsx", "regex", -- Web 与其他
 })
-
--- ---------------------------------------------------------
--- Parser 安装
--- ---------------------------------------------------------
-
--- 常用语言 parser
-local treesitter_parsers = {
-  -- Neovim 配置
-  "lua",
-  "luadoc",
-  "vim",
-  "vimdoc",
-  "query",
-
-  -- C/C++
-  "c",
-  "cpp",
-
-  -- Python
-  "python",
-
-  -- Shell
-  "bash",
-
-  -- Markdown
-  "markdown",
-  "markdown_inline",
-
-  -- 配置文件
-  "json",
-  "yaml",
-  "toml",
-
-  -- Git
-  "diff",
-  "gitcommit",
-  "gitignore",
-
-  -- Web
-  "html",
-  "css",
-  "javascript",
-  "typescript",
-  "tsx",
-
-  -- 其他常用 parser
-  "regex",
-}
-
--- 异步安装缺少的 parser。
--- 已经安装的 parser 不会重复安装。
-treesitter.install(treesitter_parsers)
 
 -- CodeCompanion buffer 本质上是 Markdown
 vim.treesitter.language.register("markdown", { "codecompanion" })
 
 -- ---------------------------------------------------------
--- 按 filetype 启用 Treesitter 功能
+-- 按 filetype 启用：有 parser 就开启高亮与折叠，没有就跳过
+-- （第一次启动时 parser 可能仍在异步安装，装好后重新打开文件即可）。
+-- 打开文件时默认全部展开：见 options.lua 的 foldlevelstart。
 -- ---------------------------------------------------------
 
--- 需要启用 Treesitter 功能的实际 filetype
-local treesitter_filetypes = {
-  "lua",
-  "vim",
-  "vimdoc",
-
-  "c",
-  "cpp",
-  "python",
-
-  "sh",
-  "bash",
-
-  "markdown",
-  "codecompanion",
-
-  "json",
-  "yaml",
-  "toml",
-  "diff",
-  "gitcommit",
-
-  "html",
-  "css",
-  "javascript",
-  "javascriptreact",
-  "typescript",
-  "typescriptreact",
-}
-
--- 适合启用 Treesitter 缩进的 filetype
--- Treesitter 缩进仍然属于实验功能，如果某种语言缩进异常，
--- 可以直接从这里删除。
-local treesitter_indent_filetypes = {
-  c = true,
-  cpp = true,
-  python = true,
-  lua = true,
-  sh = true,
-  bash = true,
-  json = true,
-  yaml = true,
-  toml = true,
-  html = true,
-  css = true,
-  javascript = true,
-  javascriptreact = true,
-  typescript = true,
-  typescriptreact = true,
-}
-
-local treesitter_group = vim.api.nvim_create_augroup("UserTreesitter", { clear = true })
+-- Treesitter 缩进仍是实验功能，只对下列 filetype 启用；
+-- 某种语言缩进异常时从这里删掉即可回退到 Vim 自带的缩进规则。
+local ts_indent = {}
+for _, ft in ipairs({
+  "c", "cpp", "python", "lua", "sh", "bash", "json", "yaml", "toml",
+  "html", "css", "javascript", "javascriptreact", "typescript", "typescriptreact",
+}) do
+  ts_indent[ft] = true
+end
 
 vim.api.nvim_create_autocmd("FileType", {
-  group = treesitter_group,
-  pattern = treesitter_filetypes,
+  group = vim.api.nvim_create_augroup("UserTreesitter", { clear = true }),
   callback = function(args)
-    -- 启用 Treesitter 高亮和语言注入
-    local ok = pcall(vim.treesitter.start, args.buf)
-
-    -- 第一次启动时 parser 可能仍在异步安装。
-    -- 此时不继续设置，安装完成后重新打开文件即可。
-    if not ok then
+    if not pcall(vim.treesitter.start, args.buf) then
       return
     end
-
-    -- Treesitter 折叠
-    vim.wo.foldmethod = "expr"
-    vim.wo.foldexpr = "v:lua.vim.treesitter.foldexpr()"
-
-    -- 打开文件时默认不要折叠所有代码
-    vim.wo.foldlevel = 99
-
-    -- Treesitter 智能缩进
-    if treesitter_indent_filetypes[vim.bo[args.buf].filetype] then
+    -- [0][0]：只作用于当前窗口里的这个 buffer，切到别的 buffer 不会带过去
+    vim.wo[0][0].foldmethod = "expr"
+    vim.wo[0][0].foldexpr = "v:lua.vim.treesitter.foldexpr()"
+    if ts_indent[args.match] then
       vim.bo[args.buf].indentexpr = "v:lua.require'nvim-treesitter'.indentexpr()"
     end
   end,

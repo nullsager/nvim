@@ -13,6 +13,11 @@ vim.opt.cursorline = true
 -- 超长行折行完整显示（默认 nowrap 会把超出屏幕的部分藏在右侧）
 -- 可用 <leader>uw 随时切换（见 keymaps.lua）
 vim.opt.wrap = true
+-- 折行后的续行保持原缩进；英文在单词边界处折行，而不是从单词中间断开
+vim.opt.breakindent = true
+vim.opt.linebreak = true
+-- 标志列常驻：诊断 / git 标记出现时文字不会左右跳动
+vim.opt.signcolumn = "yes"
 vim.cmd.colorscheme("catppuccin")
 vim.o.winborder = "single"
 
@@ -21,8 +26,19 @@ vim.o.winborder = "single"
 -- ---------------------------------------------------------
 -- 本地使用 wl-copy/xclip；SSH 里的 Neovim 没有远程桌面剪贴板，改用
 -- OSC 52 让终端把复制内容转发到本地系统剪贴板。
+-- 只用 OSC 52 复制；粘贴读 Neovim 自己的寄存器。很多终端不支持 / 禁止
+-- OSC 52 读取剪贴板，配合 unnamedplus 时每次 p 都会卡住等终端响应。
+-- 从本地粘贴进来用终端自带的粘贴（Ctrl+Shift+V）。
 if vim.env.SSH_TTY or vim.env.SSH_CONNECTION then
-  vim.g.clipboard = "osc52"
+  local osc52 = require("vim.ui.clipboard.osc52")
+  local function paste()
+    return { vim.fn.split(vim.fn.getreg('"'), "\n"), vim.fn.getregtype('"') }
+  end
+  vim.g.clipboard = {
+    name = "OSC 52 (copy only)",
+    copy = { ["+"] = osc52.copy("+"), ["*"] = osc52.copy("*") },
+    paste = { ["+"] = paste, ["*"] = paste },
+  }
 end
 vim.opt.clipboard:append("unnamedplus")
 vim.opt.scrolloff = 10
@@ -55,8 +71,14 @@ vim.opt.splitbelow = true
 vim.opt.splitright = true
 -- CursorHold 事件与 swap 文件写入的触发间隔（默认 4000ms 偏慢）
 vim.opt.updatetime = 250
+-- 组合键等待时间（默认 1000ms）：插入模式的 jk 映射让每个 j 都要等这么久
+-- 才确认不是 jk；leader 组合键有 which-key 面板提示，300ms 足够
+vim.opt.timeoutlen = 300
 -- 可视块编辑时允许光标越过行尾（改表格、对齐文本很好用）
 vim.opt.virtualedit = "block"
+-- 打开文件时折叠全部展开（Treesitter 折叠见 plugins/treesitter.lua）；
+-- 只影响初始状态，orgmode 等自己设置折叠层级的插件不受影响
+vim.opt.foldlevelstart = 99
 
 -- ---------------------------------------------------------
 -- netrw 内置文件管理器

@@ -2,6 +2,9 @@
 
 require("fzf-lua").setup({})
 
+-- vim.ui.select 改用 fzf 界面（代码操作 gra、CodeCompanion 的选择菜单等）
+require("fzf-lua").register_ui_select()
+
 -- ---------------------------------------------------------
 -- 文件与内容搜索
 -- ---------------------------------------------------------
@@ -16,7 +19,9 @@ vim.keymap.set("n", "<leader>fR", "<cmd>FzfLua resume<cr>", { desc = "Resume las
 -- ---------------------------------------------------------
 -- Neovim 内置资源
 -- ---------------------------------------------------------
-vim.keymap.set("n", "<leader>fh", "<cmd>FzfLua helptags<cr>", { desc = "Help tags" }) vim.keymap.set("n", "<leader>fk", "<cmd>FzfLua keymaps<cr>", { desc = "Search keymaps" }) vim.keymap.set("n", "<leader>fc", "<cmd>FzfLua commands<cr>", { desc = "Search commands" })
+vim.keymap.set("n", "<leader>fh", "<cmd>FzfLua helptags<cr>", { desc = "Help tags" })
+vim.keymap.set("n", "<leader>fk", "<cmd>FzfLua keymaps<cr>", { desc = "Search keymaps" })
+vim.keymap.set("n", "<leader>fc", "<cmd>FzfLua commands<cr>", { desc = "Search commands" })
 
 -- ---------------------------------------------------------
 -- LSP 与诊断（诊断显示默认关闭，用 <leader>ul 切换）

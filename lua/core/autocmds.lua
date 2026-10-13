@@ -69,6 +69,11 @@ vim.api.nvim_create_autocmd("BufReadPost", {
     if vim.o.diff then -- except in diff mode
       return
     end
+    -- 提交信息每次都是新内容，光标应该在第一行
+    local ft = vim.bo.filetype
+    if ft == "gitcommit" or ft == "gitrebase" then
+      return
+    end
     local last_pos = vim.api.nvim_buf_get_mark(0, '"') -- {line, col}
     local last_line = vim.api.nvim_buf_line_count(0)
     local row = last_pos[1]
@@ -76,5 +81,16 @@ vim.api.nvim_create_autocmd("BufReadPost", {
       return
     end
     pcall(vim.api.nvim_win_set_cursor, 0, last_pos)
+  end,
+})
+
+-- ---------------------------------------------------------
+-- 复制（y）时短暂高亮被复制的文本
+-- ---------------------------------------------------------
+vim.api.nvim_create_autocmd("TextYankPost", {
+  group = vim.api.nvim_create_augroup("UserYankHighlight", { clear = true }),
+  desc = "Highlight yanked text",
+  callback = function()
+    vim.hl.on_yank()
   end,
 })

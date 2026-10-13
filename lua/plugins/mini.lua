@@ -4,6 +4,51 @@
 require("mini.pairs").setup({})
 require("mini.surround").setup({})
 
+-- Python 三引号：mini.pairs 只认单字符配对，输入 ''' 会变成 ''''，回车后还残留一个引号。
+-- 这里在 Python buffer 接管 ' 和 "：敲第三个引号时直接补成 '''|'''，其余情况交还 mini.pairs；
+-- 同时把引号对注册给 mini.pairs 的 <CR>，在 '''|''' 中间回车会展开成三行。
+-- 与 mini.pairs 默认一致：' 前面是字母时不配对（don't），反斜杠转义时都不配对
+local quote_neigh = { ["'"] = "^[^%a\\]", ['"'] = "^[^\\]" }
+
+local function triple_quote(q)
+  local neigh = quote_neigh[q]
+  local qqq = q:rep(3)
+  local left = vim.keycode("<C-g>U<Left>")
+  return function()
+    local row, col = unpack(vim.api.nvim_win_get_cursor(0))
+    local line = vim.api.nvim_get_current_line()
+    local before, after = line:sub(1, col), line:sub(col + 1)
+    local closing = #after:match("^" .. q .. "*")
+    if before:sub(-2) ~= q:rep(2) or before:sub(-3) == qqq or closing > 3 then
+      return MiniPairs.closeopen(q .. q, neigh)
+    end
+    -- 光标前的三引号数为奇数，说明正处在三引号字符串里，这次是在敲结尾引号
+    local text = table.concat(vim.api.nvim_buf_get_lines(0, 0, row - 1, false), "\n") .. before:sub(1, -3)
+    if select(2, text:gsub(qqq, "")) % 2 == 1 then
+      return MiniPairs.closeopen(q .. q, neigh)
+    end
+    -- 补齐开头的第三个引号 + 结尾引号（mini.pairs 可能已经自动补了一个），光标停在中间
+    return q .. q:rep(3 - closing) .. left:rep(3 - closing)
+  end
+end
+
+vim.api.nvim_create_autocmd("FileType", {
+  group = vim.api.nvim_create_augroup("UserPythonTripleQuote", { clear = true }),
+  pattern = "python",
+  desc = "Python 三引号自动配对",
+  callback = function(ev)
+    for _, q in ipairs({ "'", '"' }) do
+      MiniPairs.map_buf(ev.buf, "i", q, {
+        action = "closeopen",
+        pair = q .. q,
+        neigh_pattern = quote_neigh[q],
+        register = { cr = true },
+      })
+      vim.keymap.set("i", q, triple_quote(q), { buffer = ev.buf, expr = true, replace_keycodes = false })
+    end
+  end,
+})
+
 -- 注释：gc + 动作（gcap 注释整段），gcc 注释当前行。
 -- 内置 Treesitter 注入检测：Markdown 代码块里能自动用块内语言的注释符。
 require("mini.comment").setup({})
@@ -12,7 +57,31 @@ require("mini.comment").setup({})
 -- 维护 Markdown 管道表格：选中表格行，ga 后输入 | 作为分隔符即可重新对齐。
 require("mini.align").setup({})
 
--- 状态栏：模式（彩色底）/ git 分支 / 诊断计数 / 文件名 / filetype / 行列位置。
+-- 关闭 buffer 但保留窗口布局（:bd 在窗口没有别的 buffer 可显示时会把窗口一起关掉）。
+-- 有未保存修改时先询问，而不是像 :bd! 那样直接丢弃。
+require("mini.bufremove").setup({})
+vim.keymap.set({ "i", "n", "t" }, "<C-q>", function()
+  MiniBufremove.delete()
+end, { desc = "Delete buffer" })
+
+-- 文件管理器：分栏浏览，像编辑文本一样增删改名（改完按 = 同步到磁盘）。
+-- 打开时定位到当前文件；l / h 进入 / 返回目录，q 关闭。
+require("mini.files").setup({})
+vim.keymap.set("n", "<leader>e", function()
+  local file = vim.api.nvim_buf_get_name(0)
+  MiniFiles.open(vim.uv.fs_stat(file) and file or nil)
+end, { desc = "File explorer" })
+
+-- Git：mini.git 提供 :Git 命令和状态栏分支信息；
+-- mini.diff 在行号处标出改动，gh / gH + 动作暂存 / 撤销改动（ghgh 作用于当前 hunk），
+-- [h / ]h 在改动间跳转，<leader>ud 切换叠加显示具体差异。
+require("mini.git").setup({})
+require("mini.diff").setup({})
+vim.keymap.set("n", "<leader>ud", function()
+  MiniDiff.toggle_overlay(0)
+end, { desc = "Toggle diff overlay" })
+
+-- 状态栏：模式（彩色底）/ git 分支与改动统计 / 诊断计数 / 文件名 / filetype / 行列位置。
 -- 配色取自主题同款 Catppuccin Mocha 色板。
 local statusline = require("mini.statusline")
 
@@ -71,10 +140,11 @@ org_clock_timer:start(
   end)
 )
 
--- 各段布局：模式 → git 分支 + 诊断 → 文件名 → org 计时 → filetype → 位置
+-- 各段布局：模式 → git 分支（mini.git）+ 改动统计（mini.diff）+ 诊断 → 文件名 → org 计时 → filetype → 位置
 statusline.active = function()
   local mode, mode_hl = statusline.section_mode({ trunc_width = 75 })
   local git = statusline.section_git({ trunc_width = 75 })
+  local diff = statusline.section_diff({ trunc_width = 75 })
   local diagnostics = statusline.section_diagnostics({ trunc_width = 75 })
   local filename = statusline.section_filename({ trunc_width = 140 })
   local fileinfo = statusline.section_fileinfo({ trunc_width = 120 })
@@ -83,7 +153,7 @@ statusline.active = function()
 
   return statusline.combine_groups({
     { hl = mode_hl, strings = { mode } },
-    { hl = "MiniStatuslineDevinfo", strings = { git, diagnostics } },
+    { hl = "MiniStatuslineDevinfo", strings = { git, diff, diagnostics } },
     "%<",
     { hl = "MiniStatuslineFilename", strings = { filename } },
     "%=", -- 左右分界：org 计时 / filetype / 位置推到窗口右缘
@@ -92,49 +162,6 @@ statusline.active = function()
     { hl = mode_hl, strings = { location } },
   })
 end
-
--- git 分支名：section_git 读取 vim.b.gitsigns_head（名字沿用 gitsigns 约定，
--- 不装 gitsigns 也能用）。异步获取避免状态栏刷新时阻塞。
-local function set_git_branch(buf, name)
-  vim.schedule(function()
-    if vim.api.nvim_buf_is_valid(buf) then
-      vim.b[buf].gitsigns_head = name
-      vim.cmd.redrawstatus()
-    end
-  end)
-end
-
-local function update_git_branch()
-  local buf = vim.api.nvim_get_current_buf()
-  local file = vim.api.nvim_buf_get_name(buf)
-  local dir = file ~= "" and vim.fn.fnamemodify(file, ":h") or vim.uv.cwd()
-
-  -- --show-current 对无 commit 的新分支也能返回名字；detached HEAD 时为空
-  vim.system({ "git", "-C", dir, "branch", "--show-current" }, { text = true }, function(res)
-    if res.code ~= 0 then
-      return
-    end
-    local branch = vim.trim(res.stdout or "")
-    if branch ~= "" then
-      set_git_branch(buf, branch)
-      return
-    end
-    -- detached HEAD：显示短 commit 号
-    vim.system({ "git", "-C", dir, "rev-parse", "--short", "HEAD" }, { text = true }, function(res2)
-      if res2.code == 0 then
-        set_git_branch(buf, "@" .. vim.trim(res2.stdout or ""))
-      end
-    end)
-  end)
-end
-
-local git_branch_group = vim.api.nvim_create_augroup("UserGitBranch", { clear = true })
-
-vim.api.nvim_create_autocmd({ "BufEnter", "FocusGained" }, {
-  group = git_branch_group,
-  callback = update_git_branch,
-  desc = "异步获取 git 分支名供状态栏显示",
-})
 
 -- 状态栏高亮：与 Catppuccin Mocha 同源的色板，换主题时重新应用
 local palette = {
