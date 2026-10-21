@@ -81,10 +81,12 @@ require("blink.cmp").setup({
         "latex",
       },
 
-      -- 编写独立的 LaTeX 文件时使用
+      -- 编写独立的 LaTeX 文件时使用；omni 接 VimTeX 的补全：
+      -- \ref{ / \cite{ 补标签和文献，\usepackage{ 补宏包，\begin{ 补环境名
       tex = {
         inherit_defaults = true,
         "latex",
+        "omni",
       },
       plaintex = {
         inherit_defaults = true,
@@ -98,6 +100,10 @@ require("blink.cmp").setup({
         module = "minuet.blink",
         async = true,
         timeout_ms = 3000, -- 与 minuet 的 request_timeout（3 秒）对齐
+        -- AI 候选总排在列表末尾。它们比 LSP 晚约 1 秒才到，排在前面会把已有
+        -- 候选往下挤：<C-n> 选中的项被挤出前 10 名时 blink 会直接取消选中，
+        -- 回车就变成了换行。
+        score_offset = -100,
       },
 
       latex = {
@@ -131,3 +137,37 @@ require("blink.cmp").setup({
     },
   },
 })
+
+-- 选中后冻结补全列表。
+-- 晚到的结果会让 blink 取消已选中的项，回车就变成了换行。有两种情况：
+--   1. 异步源（minuet AI 候选，约 1 秒后才到）重排列表，选中项被挤出前 10 名；
+--   2. 打字快、LSP 慢时，上一个请求的结果带着发请求时的旧 context 回来，
+--      关键字长度和当前不同，blink 误判为"又打字了"而取消选中。
+-- 这里改成：晚到的结果一律按当前 context 处理；用 <C-n>/<C-p> 主动选中某项后，
+-- 只要关键字没变（还没继续打字），就不再刷新列表。继续打字后列表照常更新，
+-- 晚到的候选也会出现。
+-- 注意：这里替换的是 blink 内部函数 list.show（基于 blink.cmp 1.10），
+-- 升级 blink 后如果补全异常，先检查这段。
+local blink_list = require("blink.cmp.completion.list")
+local blink_trigger = require("blink.cmp.completion.trigger")
+local blink_list_show = blink_list.show
+
+local function same_keyword(a, b)
+  return a ~= nil
+    and b ~= nil
+    and a.id == b.id
+    and a.bounds.start_col == b.bounds.start_col
+    and a.bounds.length == b.bounds.length
+end
+
+blink_list.show = function(context, items_by_source)
+  local live = blink_trigger.context
+  if live ~= nil and live.id == context.id then
+    context = live
+  end
+
+  if blink_list.is_explicitly_selected and same_keyword(blink_list.context, context) then
+    return
+  end
+  return blink_list_show(context, items_by_source)
+end

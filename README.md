@@ -1,8 +1,8 @@
 # Neovim 个人配置手册
 
 > 基于 **Neovim 0.12+** 的模块化配置，使用内置 `vim.pack` 管理插件。
-> 面向 C/C++、Python 开发、Markdown 笔记（Obsidian）与 Org mode 任务管理工作流，
-> 集成 DeepSeek / Claude AI 助手。
+> 面向 C/C++、Python 开发、Markdown 笔记（Obsidian）、Org mode 任务管理与 LaTeX 写作工作流，
+> 集成 DeepSeek AI 助手（含英文查词 / 翻译）。
 
 **Leader 键 = 空格（`<Space>`）**，按下后稍作停留会弹出 which-key 快捷键提示面板。
 
@@ -48,9 +48,10 @@
         ├── treesitter.lua      语法高亮 / 折叠 / 缩进 / 语法对象
         ├── obsidian.lua        Obsidian 笔记 + 笔记元素快速插入
         ├── orgmode.lua         Org mode：任务 / 议程 / 速记
-        ├── codecompanion.lua   AI 助手（DeepSeek / Claude）
+        ├── codecompanion.lua   AI 助手（DeepSeek）+ 英文查词 / 翻译浮窗
         ├── markdown.lua        Markdown 渲染：render-markdown + mini.icons
-        └── markdown-preview.lua Markdown 浏览器实时预览（<leader>mp）
+        ├── markdown-preview.lua Markdown 浏览器实时预览（<leader>mp）
+        └── latex.lua           LaTeX 写作：VimTeX + tectonic 编译 + zathura 预览
 ```
 
 **加载顺序**（`init.lua`）：
@@ -92,8 +93,10 @@ core.options  →  core.keymaps  →  core.terminal  →  core.autocmds  →  pl
 | fcitx5 + fcitx5-remote | 输入法状态自动切换（见 [fcitx5 输入法自动切换](#61-fcitx5-输入法自动切换)） |
 | wl-clipboard / xclip | 系统剪贴板互通（`unnamedplus`） |
 | Node.js（含 npm） | markdown-preview 浏览器预览的前端依赖（见 [6.9 节](#69-markdown-渲染与浏览器预览)） |
-| `DEEPSEEK_API_KEY` 环境变量 | CodeCompanion 对话与 minuet AI 补全共用（见 [CodeCompanion AI 助手](#68-codecompanion-ai-助手)） |
-| `ANTHROPIC_API_KEY` 环境变量 | CodeCompanion 调用 Claude API（不用 Claude 可不设） |
+| `DEEPSEEK_API_KEY` 环境变量 | CodeCompanion 对话、英文查词 / 翻译与 minuet AI 补全共用（见 [CodeCompanion AI 助手](#68-codecompanion-ai-助手)） |
+| tectonic | LaTeX 编译（VimTeX 的编译后端，基于 XeTeX；缺的宏包首次编译时自动下载，见 [6.13 节](#613-latex-写作vimtex)） |
+| zathura + zathura-pdf-mupdf | LaTeX 的 PDF 预览与 SyncTeX 双向跳转 |
+| biber | 只有 biblatex 用 biber 后端时才需要；传统的 `\bibliography{}` 由 tectonic 内置的 bibtex 处理 |
 | C 编译器（cc / gcc / clang） | 首次启动时编译 Org 的 Treesitter parser（一次性，见 [Org mode 任务管理](#610-org-mode-任务管理)） |
 | pandoc 或 emacs | Org 导出为 HTML / PDF 等格式（不用导出功能可忽略） |
 
@@ -101,7 +104,7 @@ core.options  →  core.keymaps  →  core.terminal  →  core.autocmds  →  pl
 
 ## 三、插件清单与管理
 
-### 插件清单（19 个）
+### 插件清单（20 个）
 
 | 插件 | 用途 |
 |------|------|
@@ -123,7 +126,8 @@ core.options  →  core.keymaps  →  core.terminal  →  core.autocmds  →  pl
 | treesitter-parser-registry | Treesitter parser 注册表 |
 | nvim-treesitter | 语法分析：高亮 / 折叠 / 缩进 |
 | nvim-treesitter-textobjects | 语法对象（函数、类、参数……） |
-| codecompanion.nvim（`^19`） | AI 助手，接入 DeepSeek 与 Anthropic Claude |
+| codecompanion.nvim（`^19`） | AI 助手，接入 DeepSeek；另含英文查词 / 翻译浮窗 |
+| vimtex | LaTeX 写作：tectonic 编译、zathura 预览与 SyncTeX 双向跳转、引用补全，见 6.13 节 |
 
 ### 使用 vim.pack 管理插件
 
@@ -431,18 +435,32 @@ core.options  →  core.keymaps  →  core.terminal  →  core.autocmds  →  pl
 
 | 快捷键 | 模式 | 作用 |
 |--------|------|------|
-| `<leader>aa` | n / v | 打开动作面板（所有预设动作的菜单） |
+| `<leader>aa` | n / x | 打开动作面板（所有预设动作的菜单） |
 | `<leader>ac` | n | 打开 / 隐藏当前聊天窗口 |
 | `<leader>an` | n | 新建聊天 |
 | `<leader>ai` | n | Inline 模式：让 AI 生成 / 修改光标附近代码 |
-| `<leader>ai` | v | 对选中代码执行 Inline 请求 |
-| `<leader>ad` | v | 把选中代码追加到当前聊天 |
-| `<leader>ae` | v | 解释选中代码（`/explain`） |
-| `<leader>af` | v | 修复选中代码（`/fix`） |
-| `<leader>at` | v | 为选中代码生成测试（`/tests`） |
+| `<leader>ai` | x | 对选中代码执行 Inline 请求 |
+| `<leader>ad` | x | 把选中代码追加到当前聊天 |
+| `<leader>ae` | x | 解释选中代码（`/explain`） |
+| `<leader>af` | x | 修复选中代码（`/fix`） |
+| `<leader>at` | x | 为选中代码生成测试（`/tests`） |
 | `<leader>am` | n | 切换默认模型（菜单选择，chat / inline / cmd 一起生效，见 [CodeCompanion AI 助手](#68-codecompanion-ai-助手)） |
 | `<leader>aM` | n | 用选定模型新建聊天（不改动默认模型） |
 | `<leader>ag` | n | 根据暂存区生成 Git commit message（`/commit`） |
+
+> 可视模式的映射用 `x` 而不是 `v`：`v` 还包含 select 模式，补全片段占位符里敲空格（leader）会被当成映射前缀卡住。
+
+**英文查词 / 翻译**（结果流式显示在光标旁的浮窗，详见 [6.8 节](#68-codecompanion-ai-助手)）：
+
+| 快捷键 | 模式 | 作用 |
+|--------|------|------|
+| `<leader>tw` | n | 查光标下的单词：音标、词性、在本句中的意思、其他常见义 |
+| `<leader>tw` | x | 查选中的词组 |
+| `<leader>ts` | n | 翻译光标所在的句子 |
+| `<leader>tp` | n | 翻译光标所在的段落 |
+| `<leader>tt` | x | 翻译选中的文本（原文是中文时译成英文） |
+
+浮窗在光标移动、进入插入模式或切换 buffer 时自动关闭；普通模式下再按一次同一快捷键进入浮窗（可滚动、复制），`q` 关闭。
 
 **聊天窗口内置按键**（codecompanion 默认）：
 
@@ -582,6 +600,35 @@ Org 计时任务（计时中才出现）、filetype 与行列位置（详见 6.1
 |--------|------|------|
 | `<leader>mp` | n | 开关浏览器实时预览（仅 Markdown 文件内生效，其他文件只提示不动作，详见 [6.9 节](#69-markdown-渲染与浏览器预览)） |
 
+### 5.13 LaTeX 写作 VimTeX（plugins/latex.lua）
+
+**tex 文件内**（`<localleader>` = `\`，buffer 局部映射；完整列表见 `:h vimtex-default-mappings`）：
+
+| 快捷键 | 模式 | 作用 |
+|--------|------|------|
+| `\ll` | n | 编译（保存时也会自动编译） |
+| `\lv` | n | 正向跳转：zathura 定位到光标所在位置（还没打开时会先打开） |
+| `\le` | n | 打开 / 关闭错误和警告列表（quickfix） |
+| `\lo` | n | 查看 tectonic 的编译输出 |
+| `\lt` | n | 目录：章节、标签导航 |
+| `\lk` | n | 停止编译 |
+| `\lc` | n | 清理中间文件（log、synctex） |
+| `\li` | n | VimTeX 状态信息（主文件、编译器、查看器） |
+| `K` | n | 打开光标处宏包的文档（texdoc） |
+| `dse` / `cse` | n | 删除 / 修改外层环境（`\begin{...}` … `\end{...}`） |
+| `dsc` | n | 删除外层命令，保留参数（`\textbf{abc}` → `abc`） |
+| `ds$` / `cs$` | n | 删除 / 修改外层数学环境 |
+| `tse` / `ts$` | n | 切换带星号环境（`equation` ↔ `equation*`）/ 行内与行间公式 |
+| `ie` / `ae` | x / o | 环境内部 / 整个环境（如 `vie`、`dae`） |
+| `i$` / `a$` | x / o | 数学环境内部 / 整个（如 `ci$` 改写公式） |
+| `ic` / `ac` | x / o | 命令名 / 整个命令含参数（如 `dac` 删除 `\textbf{...}`） |
+| `id` / `ad` | x / o | 括号等分隔符内部 / 整个 |
+| `]]` / `[[` | n | 下一个 / 上一个章节 |
+| `%` | n | 在配对的 `\begin` / `\end` 或括号之间跳转 |
+| `<F7>` | n / i | 把光标前的词变成命令（输入 `textbf` 后按 `<F7>` 得到 `\textbf{}`） |
+
+**zathura 内**：`Ctrl` + 左键点击 PDF，Neovim 跳到对应的源码行（反向跳转）。
+
 ---
 
 ## 六、功能详解
@@ -641,6 +688,10 @@ diff 模式和 git 提交信息（`gitcommit` / `gitrebase`）中自动跳过；
 折叠相关按键（Vim 内置）：`zc` 折叠 / `zo` 展开 / `za` 切换当前折叠，
 配合 `<leader>zM` / `<leader>zR` 全局折叠与展开。
 
+> 例外：LaTeX（filetype `tex`）不启用 Treesitter 高亮，交给 VimTeX 自己的语法高亮——
+> 它的数学环境文本对象（`i$` / `a$`）、`ds$` 等功能依赖这套高亮，
+> Treesitter 高亮会把它关掉（见 `:h vimtex-faq-treesitter`）。latex parser 仍可供其他插件查询。
+
 > 注：CodeCompanion 聊天 buffer 被注册为 markdown 文件类型，
 > 因此聊天内容同样享受 Markdown 高亮与渲染。
 
@@ -670,7 +721,8 @@ ruff 和 Pyright 分工：类型检查、跳转、补全、悬浮文档交给 Py
 **补全源**（默认）：`lsp` → `path` → `snippets` → `buffer` → `minuet`（AI 行内补全）
 
 **按文件类型扩展**（`per_filetype`）：`markdown`、`codecompanion`、`tex`、`plaintex`
-额外启用 `latex` 源。
+额外启用 `latex` 源；`tex` 另加 `omni` 源接入 VimTeX 的补全——`\ref{` / `\eqref{` 补标签、
+`\cite{` 补 `.bib` 里的文献、`\usepackage{` 补宏包、`\begin{` 补环境名（见 [6.13 节](#613-latex-写作vimtex)）。
 
 **LaTeX 补全**（blink-cmp-latex）：
 
@@ -746,38 +798,32 @@ TODO 标题 `tdo`、代码块 `src`），详见 [orgmode.md](orgmode.md) 5.5 节
 
 位置：`lua/plugins/codecompanion.lua`
 
-**准备工作**：设置环境变量（写入 `~/.zshrc`，重开终端生效；不用 Claude 可只设 DeepSeek）：
+**准备工作**：设置环境变量（写入 `~/.config/secrets.env`，权限 600，在 `~/.zshrc` 里 source；重开终端生效）：
 
 ```bash
 export DEEPSEEK_API_KEY="sk-xxxxxxxx"
 # 可选：覆盖默认模型；不设置时使用官方稳定别名 deepseek-flash
 export DEEPSEEK_MODEL="deepseek-flash"
-export ANTHROPIC_API_KEY="sk-ant-xxxxxxxx"
 ```
 
-**两个 adapter 的默认参数**（chat / inline / cmd 三种交互默认都用 deepseek）：
-
-| adapter | 默认模型 | 参数要点 |
-|---------|----------|----------|
-| deepseek（默认） | `deepseek-flash`（官方稳定别名，可由 `DEEPSEEK_MODEL` 覆盖） | 思考模式默认开启（聊天中显示、默认折叠）；`reasoning_effort = max`；`temperature = 0.4` |
-| anthropic | `claude-opus-5` | 5 系已移除 temperature（配置按模型自动不发，避免 400）；`effort` 五档 low ~ max，默认 high；思考内容以摘要形式显示 |
+**adapter 参数**：chat / inline / cmd 三种交互都用 deepseek，默认模型 `deepseek-flash`
+（官方稳定别名，自动跟随当前 Flash 版本，可由 `DEEPSEEK_MODEL` 覆盖）。
+其余参数沿用插件默认：思考模式开启（聊天中显示、默认折叠），`reasoning_effort = max`。
+复杂问题可能要等几秒；想更快可在 adapter 的 schema 里把 `reasoning_effort` 改成 `high`。
 
 **模型切换的四种方式**：
 
 | 方式 | 生效范围 |
 |------|----------|
-| 聊天窗口内按 `ga` | 只影响当前对话，可选到 adapter 内置的全部模型 |
+| 聊天窗口内按 `ga` | 只影响当前对话 |
 | `<leader>am` | 改默认模型，chat / inline / cmd 一起生效（当前会话内） |
 | `<leader>aM` | 用选定模型新开聊天，不动默认值 |
-| `:CodeCompanionChat adapter=anthropic model=claude-opus-5` | 命令行方式，参数有补全 |
+| `:CodeCompanionChat adapter=deepseek model=deepseek-v4-pro` | 命令行方式，参数有补全 |
 
-`<leader>am` / `<leader>aM` 的菜单是常用模型清单：DeepSeek Flash（自动跟随当前版本）/ V4 Pro、
-Claude Opus 5 / Sonnet 5 / Haiku 4.5（便宜快速）。
-
-> Claude 5 系适配说明：插件 v19 内置模型列表只到 Opus 4.8，配置里把
-> claude-opus-5 / claude-sonnet-5 合并进了 choices（其余内置模型保留，
-> `ga` 里都能选到）；这批模型不带 temperature、支持 effort 五档，
-> 思考摘要的显示也做了修补。
+模型菜单（`ga` 与 `<leader>am` / `<leader>aM` 共用，定义在 `codecompanion.lua` 顶部的 `MODELS`）：
+DeepSeek Flash（自动跟随当前版本）/ DeepSeek V4 Pro。插件内置清单里的
+`deepseek-v4-flash` / `deepseek-chat` / `deepseek-reasoner` 现在都被 API 路由到
+`deepseek-flash`，所以没有列出。
 
 **界面**：聊天窗口为右侧垂直分栏，宽 45%、全高；显示 token 用量与思考内容（默认折叠）；
 AI 修改代码时提供 diff 视图供确认；回复语言为简体中文。
@@ -790,6 +836,16 @@ AI 修改代码时提供 diff 视图供确认；回复语言为简体中文。
 2. **Inline**（`<leader>ai`）：对当前位置或选区直接生成 / 改写代码，
    以 diff 形式确认后应用
 3. **动作面板**（`<leader>aa`）：浏览全部预设动作的菜单
+
+**英文查词 / 翻译**（`<leader>t` 前缀，按键见 5.9 节）：
+
+- 不经过 chat / inline，直接复用 deepseek adapter 发一次性请求，结果流式显示在光标旁的浮窗里
+  （光标在窗口上半部分往下弹，否则往上弹）
+- 固定用 `deepseek-flash` 并关闭思考模式：查词约 0.5 秒出第一个字，一句或一段 1~2 秒翻完
+- **查词结合语境**：把单词所在的整句一起发给模型，给出它在这句话里的意思，
+  而不只是罗列词典义项（句子太长时退回当前行）
+- 翻译时把排版折行当作同一句处理；保留列表、代码、命令和专有名词；原文是中文则译成英文
+- 提示词在 `codecompanion.lua` 的 `PROMPTS` 表里，想改输出格式直接改那里
 
 ### 6.9 Markdown 渲染与浏览器预览
 
@@ -905,6 +961,7 @@ Org 文件的高亮与折叠由插件自身的 ftplugin 管理，不占用
 | `<leader>f` | 查找 Find |
 | `<leader>g` | Git |
 | `<leader>a` | AI 助手 |
+| `<leader>t` | 翻译 Translate |
 | `<leader>o` | 笔记与 Org |
 | `<leader>m` | Markdown 元素 |
 | `<leader>c` | 代码 Code |
@@ -912,7 +969,8 @@ Org 文件的高亮与折叠由插件自身的 ftplugin 管理，不占用
 | `<leader>z` | 折叠 Folds |
 | `<leader>u` | 开关 Toggle |
 
-普通模式的 `s` 前缀（mini.surround）同样标注为"环绕 Surround"。
+普通模式的 `s` 前缀（mini.surround）同样标注为"环绕 Surround"；
+tex 文件里的 `\l` 前缀（VimTeX）标注为"VimTeX"。
 分组项只给面板节点命名，不创建任何映射；想调整分组名或图标，
 改 `which-key.lua` 的 `spec` 表即可。
 
@@ -965,6 +1023,44 @@ clock in / out 后由 `orgmode.lua` 里的事件监听触发一次延迟重画�
 mini.operators 文本运算符、mini.sessions 会话管理等），
 全部模块列表见 `:help mini.nvim`。
 
+### 6.13 LaTeX 写作（VimTeX）
+
+位置：`lua/plugins/latex.lua`（按键见 5.13 节）
+
+**流程**：Neovim 写 `.tex` → tectonic 编译出 PDF → zathura 显示，SyncTeX 双向跳转：
+
+- **保存即编译**：tectonic 不支持持续编译，改为每次 `:w` 编译一次；上一次还没编完就先停掉，
+  保证 PDF 对应最新内容。第一次编译要下载宏包，约 10 秒，之后每次 1~2 秒
+- **自动预览**：第一次编译成功后自动打开 zathura，之后每次编译完 zathura 自动刷新
+- **正向跳转**（`\lv`）：zathura 翻到光标所在位置；**反向跳转**：zathura 里 `Ctrl` + 左键，
+  Neovim 跳到对应源码行（Wayland 下终端窗口不会自动获得焦点，需要手动切回）
+- **多文件项目**：在 `\input` 的子文件里保存也会编译主文件，VimTeX 自动找到主文件
+
+**中文**：tectonic 基于 XeTeX，文档类用 `ctexart` / `ctexrep` / `ctexbook`
+（或 `\usepackage{ctex}`）即可，不需要额外配置字体。
+
+**错误与警告**：
+
+- 只在出错时自动弹出 quickfix（光标留在原处），`\le` 随时打开 / 关闭列表。
+  ctex 的五号字每次都会产生无害的 `Font shape ... substituted` 警告，所以有警告时不自动弹出
+- VimTeX 原本只认 `-file-line-error` 格式的日志，并且靠"日志里有没有错误"判断编译成败；
+  tectonic 的日志是传统格式，"未定义命令""缺少 `$`" 这类错误会被漏掉，编译失败也被当成成功。
+  `latex.lua` 包装了 VimTeX 的日志解析，从 tectonic 的输出（`error: 文件:行号: 信息`）里补上
+  这些错误，子文件里的错误也能定位到正确的文件和行
+
+**补全**：`\ref{` / `\cite{` / `\usepackage{` / `\begin{` 由 VimTeX 提供（经 blink.cmp 的 `omni` 源），
+`\alpha` 等数学符号由 blink-cmp-latex 提供。`.bib` 用 VimTeX 自带的 Lua 解析器读取，
+不需要安装 bibtex 程序（`:checkhealth vimtex` 里关于 bibtex 的警告可以忽略）。
+
+**与其他配置的配合**：
+
+- tex 不启用 Treesitter 高亮（见 6.4 节）
+- treesitter.lua 全局占用了 `ic` / `ac`（类），tex 文件里换回 VimTeX 的命令文本对象
+- 输入法自动切换（6.1 节）照常工作，写中文正文、进普通模式编辑命令时自动切换
+
+**排查**：`:checkhealth vimtex` 检查依赖；`\li` 查看当前主文件、编译器与查看器；
+`\lo` 查看 tectonic 的完整输出。
+
 ---
 
 ## 七、自定义指南
@@ -979,7 +1075,9 @@ mini.operators 文本运算符、mini.sessions 会话管理等），
 | 加格式化工具 | `lua/plugins/lsp.lua` 中启用支持格式化的 LSP |
 | 启用更多 mini 模块 | `lua/plugins/mini.lua` 加一行 `require("mini.xxx").setup({})` |
 | 加 Treesitter 语言 | `lua/plugins/treesitter.lua` 开头的 `install({...})` 列表（需要 Treesitter 缩进时再加进 `ts_indent`） |
-| 换 AI 模型 / 参数 | `lua/plugins/codecompanion.lua` 的 `adapters` 段 |
+| 换 AI 模型 / 参数 | `lua/plugins/codecompanion.lua` 顶部的 `MODELS` 与 `adapters` 段 |
+| 改查词 / 翻译的输出格式 | `lua/plugins/codecompanion.lua` 的 `PROMPTS` |
+| 换 LaTeX 编译器 / PDF 查看器 | `lua/plugins/latex.lua` 的 `vimtex_compiler_method` / `vimtex_view_method`（如装了 TeX Live 可改用 `latexmk` 持续编译） |
 | 换笔记库路径 | `lua/plugins/obsidian.lua` 顶部的 `notes_path` |
 | 换 Org 文件目录 | `lua/plugins/orgmode.lua` 顶部的 `org_path` |
 

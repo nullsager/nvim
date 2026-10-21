@@ -62,6 +62,9 @@ vim.pack.add({
   "https://github.com/MeanderingProgrammer/render-markdown.nvim",
   "https://github.com/iamcco/markdown-preview.nvim",
 
+  -- LaTeX 写作（编译 + zathura 预览）
+  "https://github.com/lervag/vimtex",
+
   -- 通用依赖库
   "https://www.github.com/nvim-lua/plenary.nvim",
 
@@ -87,3 +90,4 @@ require("plugins.orgmode")
 require("plugins.codecompanion")
 require("plugins.markdown")
 require("plugins.markdown-preview")
+require("plugins.latex")

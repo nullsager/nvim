@@ -29,12 +29,16 @@ wk.setup({
     { "<leader>f", group = "查找 Find", icon = { icon = "", color = "green" }, mode = { "n", "v" } },
     { "<leader>g", group = "Git", icon = { cat = "filetype", name = "git" }, mode = "n" },
     { "<leader>a", group = "AI 助手", icon = { icon = "", color = "green" }, mode = { "n", "v" } },
+    { "<leader>t", group = "翻译 Translate", icon = { icon = "󰗊", color = "azure" }, mode = { "n", "v" } },
     { "<leader>o", group = "笔记与 Org", icon = { cat = "filetype", name = "org" }, mode = "n" },
     { "<leader>m", group = "Markdown 元素", icon = { cat = "filetype", name = "markdown" }, mode = { "n", "v" } },
     { "<leader>c", group = "代码 Code", icon = { icon = "", color = "orange" }, mode = "n" },
     { "<leader>s", group = "参数交换 Swap", icon = { icon = "󰅇", color = "yellow" }, mode = "n" },
     { "<leader>z", group = "折叠 Folds", icon = { icon = "", color = "cyan" }, mode = "n" },
     { "<leader>u", group = "开关 Toggle", icon = { icon = "", color = "yellow" }, mode = "n" },
+
+    -- <localleader>（\）子前缀，只在 tex 文件里有映射
+    { "<localleader>l", group = "VimTeX", icon = { cat = "filetype", name = "tex" }, mode = { "n", "x" } },
 
     -- 无 leader 的自定义前缀（mini.surround：sa/sd/sr/sf/sh……）
     { "s", group = "环绕 Surround", mode = { "n", "v" } },

@@ -35,6 +35,11 @@ end
 vim.api.nvim_create_autocmd("FileType", {
   group = vim.api.nvim_create_augroup("UserTreesitter", { clear = true }),
   callback = function(args)
+    -- LaTeX 交给 VimTeX 自己的语法高亮：它的数学环境文本对象（i$ / a$）
+    -- 等功能依赖这套高亮，Treesitter 高亮会把它关掉（见 :h vimtex-faq-treesitter）
+    if args.match == "tex" then
+      return
+    end
     if not pcall(vim.treesitter.start, args.buf) then
       return
     end

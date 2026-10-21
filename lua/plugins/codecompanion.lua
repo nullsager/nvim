@@ -1,225 +1,67 @@
--- AI 助手：CodeCompanion（DeepSeek + Anthropic Claude）
+-- AI 助手：CodeCompanion（DeepSeek）
 --
--- 需要的环境变量（写在 ~/.zshrc 里，然后重开终端）：
---   DEEPSEEK_API_KEY    DeepSeek 官方 key
---   ANTHROPIC_API_KEY   Anthropic 官方 key
---
--- 当前 DeepSeek 默认模型。官方提供稳定的 `deepseek-flash` 别名；
+-- 需要环境变量 DEEPSEEK_API_KEY（写在 ~/.config/secrets.env 里，由 ~/.zshrc source，然后重开终端）。
+-- 默认模型是官方稳定别名 `deepseek-flash`，会自动指向当前 Flash 版本；
 -- 也可设置 DEEPSEEK_MODEL 固定到某个具体模型 ID。
--- 官方稳定别名 `deepseek-flash` 会指向当前 Flash 版本。
-local DEEPSEEK_MODEL = vim.env.DEEPSEEK_MODEL or "deepseek-flash"
-
+--
 -- 切换模型的几种方式：
 --   1. chat 窗口里按 `ga`   —— 插件内置，只影响当前这个对话
 --   2. <leader>am           —— 改默认模型，chat / inline / cmd 一起生效
 --   3. <leader>aM           —— 用选定的模型新开一个 chat，不动默认值
---   4. :CodeCompanionChat adapter=anthropic model=claude-opus-5（命令行有补全）
+--   4. :CodeCompanionChat adapter=deepseek model=deepseek-v4-pro
 
-local codecompanion = require("codecompanion")
-local adapter_utils = require("codecompanion.adapters.utils")
-local anthropic_base = require("codecompanion.adapters.http.anthropic")
+local adapters = require("codecompanion.adapters")
 
--- ---------------------------------------------------------
--- Anthropic 适配说明
---
--- 插件 v19 内置的模型列表里还没有 Claude 5 系（只到 Opus 4.8 / Fable 5），
--- 下面的 extend 会把 claude-opus-5 / claude-sonnet-5 合并进内置的 choices，
--- 其余模型（Sonnet 4.6、Haiku 4.5 等）仍然保留，`ga` 里都能选到。
--- ---------------------------------------------------------
+local DEEPSEEK_MODEL = vim.env.DEEPSEEK_MODEL or "deepseek-flash"
 
--- 这批模型已经删掉了 temperature / top_k 参数，带上会直接返回 400；
--- 同时它们支持 output_config.effort 的全部五个档位（low ~ max）。
-local MODERN_CLAUDE = {
-  ["claude-opus-5"] = true,
-  ["claude-sonnet-5"] = true,
-  ["claude-opus-4-8"] = true,
-  ["claude-opus-4-7"] = true,
-  ["claude-fable-5"] = true,
+-- 模型菜单，`ga` 和 <leader>am / <leader>aM 共用。
+-- 插件内置清单里的 deepseek-v4-flash / deepseek-chat / deepseek-reasoner
+-- 现在都被 API 路由到 deepseek-flash，这里只列实际不同的模型。
+local MODELS = {
+  ["deepseek-flash"] = "DeepSeek Flash（自动跟随当前版本）",
+  ["deepseek-v4-pro"] = "DeepSeek V4 Pro",
 }
+MODELS[DEEPSEEK_MODEL] = MODELS[DEEPSEEK_MODEL] or DEEPSEEK_MODEL
 
-local function is_modern_claude(self)
-  local model = adapter_utils.model(self)
-  return type(model) == "string" and MODERN_CLAUDE[model] == true
-end
-
-codecompanion.setup({
-  -- 只覆盖真正需要修改的参数。
-  -- 模型列表、模型能力和 API 地址都使用插件内置配置。
+require("codecompanion").setup({
   adapters = {
     http = {
-      -- 说明：这里是直接替换预设条目，而不是用 `adapters.http.extend`。
-      -- extend 里的补丁是在 adapter 解析的最后一步才合并进去的，会把
-      -- `:CodeCompanionChat model=xxx` 显式指定的模型重新覆盖成 default，
-      -- 用函数形式重新定义 adapter 就没有这个问题。
+      -- 用函数重新定义 deepseek，而不是 `adapters.http.extend`：
+      -- extend 的补丁在 adapter 解析的最后一步才合并，会把
+      -- `:CodeCompanionChat model=xxx` 显式指定的模型覆盖回 default。
+      -- 其余参数沿用插件默认：思考模式开启，reasoning_effort = "max"。
       deepseek = function()
-        local adapter = require("codecompanion.adapters").extend("deepseek", {
-          schema = {
-            -- DeepSeek 默认模型；可用 DEEPSEEK_MODEL 覆盖
-            model = {
-              default = DEEPSEEK_MODEL,
-            },
-
-            -- 默认启用思考模式
-            ["thinking.type"] = {
-              default = "enabled",
-            },
-
-            -- DeepSeek V4 系列支持 high 和 max
-            reasoning_effort = {
-              default = "max",
-            },
-
-            -- 限制单次响应的最大输出长度
-            -- max_tokens = {
-            --   default = 8192,
-            -- },
-
-            -- 思考模式启用时，temperature 通常不会生效
-            temperature = {
-              default = 0.4,
-            },
-          },
+        local adapter = adapters.extend("deepseek", {
+          schema = { model = { default = DEEPSEEK_MODEL } },
         })
-
-        -- 保留插件内置模型，并把当前/环境变量指定的模型加入菜单。
-        -- 这样新模型即使尚未被 CodeCompanion 内置，也能直接使用。
-        local choices = adapter.schema.model.choices
-        choices["deepseek-flash"] = {
-          formatted_name = "DeepSeek Flash（自动跟随当前版本）",
-          meta = { context_window = 1048576 },
-          opts = { can_reason = true, can_use_tools = true },
-        }
-        if DEEPSEEK_MODEL ~= "deepseek-flash" then
-          choices[DEEPSEEK_MODEL] = {
-            formatted_name = DEEPSEEK_MODEL,
+        local choices = {}
+        for model, name in pairs(MODELS) do
+          choices[model] = {
+            formatted_name = name,
             meta = { context_window = 1048576 },
             opts = { can_reason = true, can_use_tools = true },
           }
         end
+        adapter.schema.model.choices = choices
         return adapter
       end,
-
-      anthropic = function()
-        return require("codecompanion.adapters").extend("anthropic", {
-          schema = {
-            model = {
-              -- Anthropic 默认模型
-              default = "claude-opus-5",
-
-              -- 只是往内置 choices 里“加”条目，不会覆盖已有模型
-              choices = {
-                ["claude-opus-5"] = {
-                  formatted_name = "Claude Opus 5",
-                  meta = { context_window = 1000000, max_tokens = 128000 },
-                  -- can_reason = true -> 默认发送 thinking = { type = "adaptive" }
-                  opts = { can_reason = true, can_manage_context = true, has_vision = true },
-                },
-                ["claude-sonnet-5"] = {
-                  formatted_name = "Claude Sonnet 5",
-                  meta = { context_window = 1000000, max_tokens = 128000 },
-                  opts = { can_reason = true, can_manage_context = true, has_vision = true },
-                },
-              },
-            },
-
-            -- 5 系 / Opus 4.7+ 已移除 temperature，发过去会 400，这里直接不发
-            temperature = {
-              enabled = function(self)
-                return not is_modern_claude(self)
-              end,
-            },
-
-            -- 思考深度 + 总体 token 预算（对应 API 的 output_config.effort）
-            -- low 最省；high 是默认；xhigh 写代码最合适；max 最贵最认真
-            ["output_config.effort"] = {
-              order = 10,
-              mapping = "parameters",
-              type = "enum",
-              optional = true,
-              default = "high",
-              choices = { "low", "medium", "high", "xhigh", "max" },
-              desc = "Controls thinking depth and overall token spend.",
-              enabled = is_modern_claude,
-            },
-          },
-
-          handlers = {
-            -- 内置 handler 只发 thinking = { type = "adaptive" }，
-            -- 而 5 系模型的 display 默认是 "omitted"（思考内容返回空字符串）。
-            -- 补一个 display = "summarized"，chat 窗口里才看得到思考摘要。
-            form_parameters = function(self, params, messages)
-              params = anthropic_base.handlers.form_parameters(self, params, messages)
-              if params.thinking and params.thinking.type == "adaptive" then
-                params.thinking.display = "summarized"
-              end
-              return params
-            end,
-          },
-        })
-      end,
-
-      opts = {
-        -- 切换 adapter 时显示模型选择菜单
-        show_model_choices = true,
-      },
     },
   },
 
   interactions = {
-    chat = {
-      adapter = {
-        name = "deepseek",
-        model = DEEPSEEK_MODEL,
-      },
-    },
-
-    inline = {
-      adapter = {
-        name = "deepseek",
-        model = DEEPSEEK_MODEL,
-      },
-    },
-
-    cmd = {
-      adapter = {
-        name = "deepseek",
-        model = DEEPSEEK_MODEL,
-      },
-    },
+    chat = { adapter = "deepseek" },
+    inline = { adapter = "deepseek" },
+    cmd = { adapter = "deepseek" },
   },
 
   display = {
     chat = {
-      -- 显示思考内容
-      show_reasoning = true,
-
-      -- 默认折叠思考内容，避免占用太多空间
-      fold_reasoning = true,
-
-      -- 显示 token 数量
-      show_token_count = true,
-
-      -- render-markdown 已经负责标题分隔样式
-      show_header_separator = false,
-
-      window = {
-        layout = "vertical",
-        width = 0.45,
-        full_height = true,
-      },
-    },
-
-    diff = {
-      enabled = true,
+      window = { width = 0.45 },
     },
   },
 
   opts = {
-    log_level = "ERROR",
     language = "Simplified Chinese",
-
-    -- 允许把当前代码、选区和文件内容发送给模型
-    send_code = true,
   },
 })
 
@@ -227,141 +69,262 @@ codecompanion.setup({
 -- 模型切换
 -- ---------------------------------------------------------
 
--- 常用模型清单，只影响 <leader>am / <leader>aM 的选择菜单；
--- `ga` 仍然可以选到 adapter 里的全部模型。
-local MODELS = {
-  { adapter = "deepseek", model = "deepseek-flash", label = "DeepSeek Flash（自动跟随当前版本）" },
-  { adapter = "deepseek", model = "deepseek-v4-pro", label = "DeepSeek V4 Pro" },
-  { adapter = "anthropic", model = "claude-opus-5", label = "Claude Opus 5" },
-  { adapter = "anthropic", model = "claude-sonnet-5", label = "Claude Sonnet 5" },
-  { adapter = "anthropic", model = "claude-haiku-4-5", label = "Claude Haiku 4.5（便宜快速）" },
-}
-
-if DEEPSEEK_MODEL ~= "deepseek-flash" then
-  table.insert(MODELS, 1, { adapter = "deepseek", model = DEEPSEEK_MODEL, label = "DeepSeek（环境变量指定）" })
-end
-
 local function pick_model(on_choice)
-  vim.ui.select(MODELS, {
-    prompt = "CodeCompanion 模型",
-    format_item = function(item)
-      return item.label
+  local models = vim.tbl_keys(MODELS)
+  table.sort(models)
+  vim.ui.select(models, {
+    prompt = "DeepSeek 模型",
+    format_item = function(model)
+      return MODELS[model]
     end,
-  }, function(choice)
-    if choice then
-      on_choice(choice)
+  }, function(model)
+    if model then
+      on_choice(model)
     end
   end)
 end
 
--- 修改 chat / inline / cmd 的默认 adapter 与模型（当前会话内有效）
-local function set_default_model(choice)
+-- 修改 chat / inline / cmd 的默认模型（当前会话内有效）
+local function set_default_model(model)
   local cc_config = require("codecompanion.config")
   for _, interaction in ipairs({ "chat", "inline", "cmd" }) do
-    cc_config.interactions[interaction].adapter = {
-      name = choice.adapter,
-      model = choice.model,
-    }
+    cc_config.interactions[interaction].adapter = { name = "deepseek", model = model }
   end
 
   -- 如果当前缓冲区正好是一个 chat，顺手把它也切过去
   local chat = require("codecompanion.interactions.chat").buf_get_chat(0)
-  if chat and chat:change_adapter(choice.adapter) then
-    chat:change_model({ model = choice.model })
+  if chat and chat:change_adapter("deepseek") then
+    chat:change_model({ model = model })
   end
 
-  vim.notify("CodeCompanion 默认模型：" .. choice.label)
+  vim.notify("CodeCompanion 默认模型：" .. MODELS[model])
+end
+
+-- ---------------------------------------------------------
+-- 翻译
+-- ---------------------------------------------------------
+-- 不经过 chat / inline，直接用 deepseek adapter 发一次性请求，结果流式
+-- 显示在光标旁的浮窗里。固定用 Flash 并关闭思考模式，查词约 1 秒出结果。
+--
+--   <leader>tw  查光标下的单词（可视模式：查选中的词组），按所在句子给出词义
+--   <leader>ts  翻译光标所在的句子
+--   <leader>tp  翻译光标所在的段落
+--   <leader>tt  翻译选中的文本（可视模式）
+--
+-- 浮窗在光标移动、进入插入模式或切换 buffer 时自动关闭；
+-- 普通模式下再按一次同一快捷键可进入浮窗滚动、复制，q 关闭。
+
+local PROMPTS = {
+  word = [[你是英汉词典。用户会给出一个英文单词或短语，以及它所在的原文。用简体中文按下面的格式回答，不要寒暄，不要复述原文：
+单词 /音标/ 词性（如果是变形，在括号里注明原形；短语可省略音标）
+本句：它在这段原文里的意思
+其他：最多三个其他常见义项，用分号隔开]],
+  text = [[你是专业译者。把用户给出的文本译成准确、通顺的简体中文；如果原文是中文，则译成英文。
+只输出译文，不要解释，不要复述原文。原文里句子中间的换行只是排版折行，按完整句子翻译；保留列表、代码、命令和专有名词。]],
+}
+
+local translate_adapter
+local float = {} -- 当前浮窗：win、请求 handle、触发它的快捷键 lhs
+
+local function close_float()
+  if float.handle then
+    float.handle.cancel()
+  end
+  if float.win and vim.api.nvim_win_is_valid(float.win) then
+    vim.api.nvim_win_close(float.win, true)
+  end
+  float = {}
+  pcall(vim.api.nvim_del_augroup_by_name, "CodeCompanionTranslate")
+end
+
+local function open_float(title)
+  local buf = vim.api.nvim_create_buf(false, true)
+  vim.bo[buf].bufhidden = "wipe"
+  vim.bo[buf].filetype = "markdown"
+
+  -- 光标在窗口上半部分就往下弹，否则往上弹
+  local below = vim.fn.winline() <= vim.api.nvim_win_get_height(0) / 2
+  float.win = vim.api.nvim_open_win(buf, false, {
+    relative = "cursor",
+    anchor = below and "NW" or "SW",
+    row = below and 1 or 0,
+    col = 0,
+    width = 10,
+    height = 1,
+    style = "minimal",
+    title = " " .. title .. " ",
+  })
+  vim.wo[float.win].wrap = true
+  vim.wo[float.win].linebreak = true
+  vim.keymap.set("n", "q", close_float, { buffer = buf, nowait = true })
+
+  local src, pos = vim.api.nvim_get_current_buf(), vim.api.nvim_win_get_cursor(0)
+  local group = vim.api.nvim_create_augroup("CodeCompanionTranslate", { clear = true })
+  vim.api.nvim_create_autocmd({ "CursorMoved", "InsertEnter" }, {
+    group = group,
+    buffer = src,
+    callback = function(ev)
+      -- 退出可视模式时光标可能被修正一格，位置没变就不算移动
+      if ev.event == "InsertEnter" or not vim.deep_equal(vim.api.nvim_win_get_cursor(0), pos) then
+        close_float()
+      end
+    end,
+  })
+  vim.api.nvim_create_autocmd("BufEnter", {
+    group = group,
+    callback = function(ev)
+      if ev.buf ~= buf and ev.buf ~= src then
+        close_float()
+      end
+    end,
+  })
+  return buf
+end
+
+local function render(buf, text)
+  local win = vim.fn.bufwinid(buf)
+  if win == -1 then
+    return
+  end
+  local lines = vim.split(text, "\n", { plain = true })
+  vim.api.nvim_buf_set_lines(buf, 0, -1, false, lines)
+
+  local width = 10
+  for _, line in ipairs(lines) do
+    width = math.max(width, vim.fn.strdisplaywidth(line))
+  end
+  vim.api.nvim_win_set_width(win, math.min(width, 80, vim.o.columns - 4))
+  -- 按折行后的实际行数设高度，最多占屏幕 40%
+  local height = vim.api.nvim_win_text_height(win, {}).all
+  vim.api.nvim_win_set_height(win, math.min(height, math.floor(vim.o.lines * 0.4)))
+end
+
+-- context 只在查词时传入：要查的词所在的原文
+local function translate(title, system, text, context)
+  close_float()
+  text = vim.trim(text)
+  if text == "" then
+    return vim.notify("没有可翻译的内容", vim.log.levels.WARN)
+  end
+  if context then
+    text = ("单词：%s\n原文：%s"):format(text, context)
+  end
+
+  if not translate_adapter then
+    local adapter = adapters.resolve("deepseek", { model = "deepseek-flash" })
+    translate_adapter = adapter:map_schema_to_params(require("codecompanion.schema").get_default(adapter, {
+      ["thinking.type"] = "disabled",
+      temperature = 0.3,
+    }))
+  end
+
+  local buf = open_float(title)
+  render(buf, "翻译中…")
+
+  local parts = {}
+  float.handle = require("codecompanion.http").new({ adapter = translate_adapter }):send({
+    messages = {
+      { role = "system", content = system },
+      { role = "user", content = text },
+    },
+  }, {
+    silent = true,
+    on_chunk = function(chunk)
+      local result = adapters.call_handler(translate_adapter, "parse_chat", chunk)
+      local content = result and result.output and result.output.content
+      if content and content ~= "" then
+        table.insert(parts, content)
+        render(buf, table.concat(parts))
+      end
+    end,
+    on_done = function()
+      if #parts == 0 then
+        render(buf, "（没有返回内容）")
+      end
+    end,
+    on_error = function(err)
+      local detail = type(err.stderr) == "table" and err.stderr.body or err.stderr
+      render(buf, ("翻译失败：%s\n%s"):format(err.message or "", tostring(detail or "")))
+    end,
+  })
+end
+
+-- 用文本对象取文字（is 句子、ip 段落），不移动光标、不占用寄存器
+local function textobj(obj)
+  local view = vim.fn.winsaveview()
+  vim.cmd("normal! v" .. obj .. "\27")
+  local lines = vim.fn.getregion(vim.fn.getpos("'<"), vim.fn.getpos("'>"), { type = vim.fn.visualmode() })
+  vim.fn.winrestview(view)
+  return table.concat(lines, "\n")
+end
+
+-- 取可视模式的选区并退出可视模式
+local function selection()
+  local lines = vim.fn.getregion(vim.fn.getpos("v"), vim.fn.getpos("."), { type = vim.fn.mode() })
+  vim.api.nvim_feedkeys(vim.keycode("<Esc>"), "nx", false)
+  return table.concat(lines, "\n")
+end
+
+local function lookup(word)
+  -- 语境优先取整句；句子太长（比如没有句号的长列表）就退回当前行
+  local context = textobj("is")
+  if vim.fn.strchars(context) > 800 then
+    context = vim.api.nvim_get_current_line()
+  end
+  translate("查词", PROMPTS.word, word, context)
 end
 
 -- ---------------------------------------------------------
 -- 快捷键
 -- ---------------------------------------------------------
+-- 可视模式用 "x" 而不是 "v"：v 还包含 select 模式，补全片段占位符里
+-- 敲空格（leader）会被当成映射前缀而卡住。
 
--- 打开动作面板
-vim.keymap.set({ "n", "v" }, "<leader>aa", "<cmd>CodeCompanionActions<cr>", {
-  noremap = true,
-  silent = true,
-  desc = "CodeCompanion Actions",
-})
+local function map(mode, lhs, rhs, desc)
+  vim.keymap.set(mode, lhs, rhs, { silent = true, desc = desc })
+end
 
--- 打开或隐藏当前 Chat
-vim.keymap.set("n", "<leader>ac", "<cmd>CodeCompanionChat Toggle<cr>", {
-  noremap = true,
-  silent = true,
-  desc = "Toggle CodeCompanion Chat",
-})
+-- 普通模式的翻译键：浮窗已由同一个键打开时，再按一次就进入浮窗（同 K 的习惯）
+local function map_translate(lhs, fn, desc)
+  map("n", lhs, function()
+    if float.lhs == lhs and float.win and vim.api.nvim_win_is_valid(float.win) then
+      return vim.api.nvim_set_current_win(float.win)
+    end
+    fn()
+    float.lhs = lhs
+  end, desc)
+end
 
--- 打开一个新的 Chat
-vim.keymap.set("n", "<leader>an", "<cmd>CodeCompanionChat<cr>", {
-  noremap = true,
-  silent = true,
-  desc = "New CodeCompanion Chat",
-})
-
--- 普通模式：打开 Inline 输入窗口
--- 可用于要求 AI 生成或修改当前位置附近的代码
-vim.keymap.set("n", "<leader>ai", "<cmd>CodeCompanion<cr>", {
-  noremap = true,
-  silent = true,
-  desc = "CodeCompanion Inline",
-})
-
--- 可视模式：对选中的代码执行 Inline 请求
-vim.keymap.set("v", "<leader>ai", "<cmd>CodeCompanion<cr>", {
-  noremap = true,
-  silent = true,
-  desc = "CodeCompanion Inline Selection",
-})
-
--- 把选中的代码添加到当前 Chat
-vim.keymap.set("v", "<leader>ad", "<cmd>CodeCompanionChat Add<cr>", {
-  noremap = true,
-  silent = true,
-  desc = "Add Selection to CodeCompanion Chat",
-})
-
--- 解释选中的代码
-vim.keymap.set("v", "<leader>ae", "<cmd>CodeCompanion /explain<cr>", {
-  noremap = true,
-  silent = true,
-  desc = "Explain Selected Code",
-})
-
--- 修复选中的代码
-vim.keymap.set("v", "<leader>af", "<cmd>CodeCompanion /fix<cr>", {
-  noremap = true,
-  silent = true,
-  desc = "Fix Selected Code",
-})
-
--- 为选中的代码生成测试
-vim.keymap.set("v", "<leader>at", "<cmd>CodeCompanion /tests<cr>", {
-  noremap = true,
-  silent = true,
-  desc = "Generate Tests",
-})
-
--- 切换默认模型（chat / inline / cmd 一起改）
-vim.keymap.set("n", "<leader>am", function()
+map({ "n", "x" }, "<leader>aa", "<cmd>CodeCompanionActions<cr>", "CodeCompanion Actions")
+map("n", "<leader>ac", "<cmd>CodeCompanionChat Toggle<cr>", "Toggle CodeCompanion Chat")
+map("n", "<leader>an", "<cmd>CodeCompanionChat<cr>", "New CodeCompanion Chat")
+map({ "n", "x" }, "<leader>ai", "<cmd>CodeCompanion<cr>", "CodeCompanion Inline")
+map("x", "<leader>ad", "<cmd>CodeCompanionChat Add<cr>", "Add Selection to CodeCompanion Chat")
+map("x", "<leader>ae", "<cmd>CodeCompanion /explain<cr>", "Explain Selected Code")
+map("x", "<leader>af", "<cmd>CodeCompanion /fix<cr>", "Fix Selected Code")
+map("x", "<leader>at", "<cmd>CodeCompanion /tests<cr>", "Generate Tests")
+map("n", "<leader>ag", "<cmd>CodeCompanion /commit<cr>", "Generate Git Commit Message")
+map("n", "<leader>am", function()
   pick_model(set_default_model)
-end, {
-  silent = true,
-  desc = "Switch Default AI Model",
-})
-
--- 用指定模型新建一个 Chat（不改默认值）
-vim.keymap.set("n", "<leader>aM", function()
-  pick_model(function(choice)
-    vim.cmd(("CodeCompanionChat adapter=%s model=%s"):format(choice.adapter, choice.model))
+end, "Switch Default AI Model")
+map("n", "<leader>aM", function()
+  pick_model(function(model)
+    vim.cmd("CodeCompanionChat adapter=deepseek model=" .. model)
   end)
-end, {
-  silent = true,
-  desc = "New Chat With Model",
-})
+end, "New Chat With Model")
 
--- 可选：生成 Git commit message
-vim.keymap.set("n", "<leader>ag", "<cmd>CodeCompanion /commit<cr>", {
-  noremap = true,
-  silent = true,
-  desc = "Generate Git Commit Message",
-})
+map_translate("<leader>tw", function()
+  lookup(vim.fn.expand("<cword>"))
+end, "Look up word")
+map_translate("<leader>ts", function()
+  translate("翻译", PROMPTS.text, textobj("is"))
+end, "Translate sentence")
+map_translate("<leader>tp", function()
+  translate("翻译", PROMPTS.text, textobj("ip"))
+end, "Translate paragraph")
+map("x", "<leader>tw", function()
+  lookup(selection())
+end, "Look up selection")
+map("x", "<leader>tt", function()
+  translate("翻译", PROMPTS.text, selection())
+end, "Translate selection")
