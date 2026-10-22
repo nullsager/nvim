@@ -18,10 +18,10 @@ require("render-markdown").setup({
     "t",
   },
 
-  -- 光标所在行显示原始 Markdown。
-  -- 例如把渲染后的标题恢复成 ## Title，方便修改。
+  -- 普通模式下光标所在行也保持渲染，阅读时不会被源码打断。
+  -- 需要看原始 Markdown 时进入插入模式即可（render_modes 不含 "i"）。
   anti_conceal = {
-    enabled = true,
+    enabled = false,
   },
 
   -- 全局关闭 sign column 中的 Markdown 图标。
