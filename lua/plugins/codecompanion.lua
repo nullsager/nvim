@@ -23,6 +23,64 @@ local MODELS = {
 }
 MODELS[DEEPSEEK_MODEL] = MODELS[DEEPSEEK_MODEL] or DEEPSEEK_MODEL
 
+-- ---------------------------------------------------------
+-- 回答风格与自定义提示词
+-- ---------------------------------------------------------
+-- 插件默认 system prompt 要求先写伪代码计划、结尾再给"下一步建议"，回答容易很长。
+-- 这里在默认 prompt 后面追加简洁要求，覆盖那两条。chat 里按 gs 可临时关掉 system prompt。
+local CONCISE = [[
+
+回答要求（优先于上面的规则）：
+- 简洁直接：默认不超过 150 字或 5 个要点，先给结论，不寒暄，不复述问题。
+- 不写伪代码计划，结尾不给"下一步建议"，除非用户要求。
+- 只在必要时给代码，代码块里只放相关的几行。
+- 用户说"详细""展开"时再展开。]]
+
+local EXPLAIN_PROMPT = [[你在帮用户读代码。用户会给出选中的代码和它所在的文件。
+- 结合所在文件和项目，说明这段代码做什么、为什么这样写、和周围代码怎么配合。
+- 用到了项目里别处定义的函数或配置、只看当前文件理解不了时，才用工具去查，最多查 3 次。
+- 不超过 200 字：先用一句话说清作用，再用最多 4 个要点讲关键细节或容易踩坑的地方。
+- 不逐行翻译代码，不讲语言基础语法，不重复贴代码。]]
+
+local COMMENT_PROMPT = [[给用户提供的代码添加简体中文注释，返回加好注释的完整代码。
+- 代码本身不做任何改动：不改逻辑、命名、格式和缩进，也不删除已有注释。
+- 函数、类、模块按该语言惯例写文档注释（Lua 用 LuaLS 的 ---@param / ---@return，Python 用 docstring，JS/TS 用 JSDoc，Rust 用 ///）。
+- 只给不直观的逻辑加简短的行内注释，写"为什么"而不是复述代码；一眼能看懂的行不加注释。]]
+
+-- 简要解释的用户消息：选中的代码 + 所在文件（太长时只取选区前后 150 行）
+local function explain_message(context)
+  local total = vim.api.nvim_buf_line_count(context.bufnr)
+  local first, last = 1, total
+  if total > 1500 then
+    first, last = math.max(1, context.start_line - 150), math.min(total, context.end_line + 150)
+  end
+  local file = table.concat(vim.api.nvim_buf_get_lines(context.bufnr, first - 1, last, false), "\n")
+  local path = vim.fn.fnamemodify(vim.api.nvim_buf_get_name(context.bufnr), ":.")
+
+  return ([[解释 %s 第 %d-%d 行的这段代码：
+
+````%s
+%s
+````
+
+所在文件（第 %d-%d 行，共 %d 行）：
+
+````%s
+%s
+````]]):format(
+    path,
+    context.start_line,
+    context.end_line,
+    context.filetype,
+    context.code,
+    first,
+    last,
+    total,
+    context.filetype,
+    file
+  )
+end
+
 require("codecompanion").setup({
   adapters = {
     http = {
@@ -49,9 +107,70 @@ require("codecompanion").setup({
   },
 
   interactions = {
-    chat = { adapter = "deepseek" },
+    chat = {
+      adapter = "deepseek",
+      tools = {
+        -- 只读工具免确认（默认每次调用都要手动批准），方便 AI 自己查项目里的其他文件
+        read_file = { opts = { require_approval_before = false } },
+        grep_search = { opts = { require_approval_before = false } },
+      },
+      opts = {
+        -- 同插件默认的 system prompt，末尾追加 CONCISE
+        system_prompt = function(ctx)
+          return ctx.default_system_prompt
+            .. ([[Additional context:
+All non-code text responses must be written in the %s language.
+The user's current working directory is %s.
+The current date is %s.
+The user's Neovim version is %s.
+The user is working on a %s machine. Please respond with system specific commands if applicable.
+]]):format(ctx.language, ctx.cwd, ctx.date, ctx.nvim_version, ctx.os)
+            .. CONCISE
+        end,
+      },
+    },
     inline = { adapter = "deepseek" },
     cmd = { adapter = "deepseek" },
+  },
+
+  -- 也会出现在 <leader>aa 的菜单里
+  prompt_library = {
+    ["简要解释"] = {
+      interaction = "chat",
+      description = "结合所在文件和项目，用几句话解释选中的代码",
+      opts = {
+        alias = "brief",
+        auto_submit = true,
+        modes = { "v" },
+        stop_context_insertion = true,
+      },
+      tools = { "read_file", "grep_search", "file_search" },
+      prompts = {
+        { role = "system", content = EXPLAIN_PROMPT },
+        { role = "user", content = explain_message, opts = { contains_code = true } },
+      },
+    },
+    ["添加注释"] = {
+      interaction = "inline",
+      description = "给选中的代码补充注释，不改动代码本身",
+      opts = {
+        alias = "comment",
+        auto_submit = true,
+        modes = { "v" },
+        placement = "replace",
+        stop_context_insertion = true,
+      },
+      prompts = {
+        { role = "system", content = COMMENT_PROMPT },
+        {
+          role = "user",
+          content = function(context)
+            return ("````%s\n%s\n````"):format(context.filetype, context.code)
+          end,
+          opts = { contains_code = true },
+        },
+      },
+    },
   },
 
   display = {
@@ -300,7 +419,8 @@ map("n", "<leader>ac", "<cmd>CodeCompanionChat Toggle<cr>", "Toggle CodeCompanio
 map("n", "<leader>an", "<cmd>CodeCompanionChat<cr>", "New CodeCompanion Chat")
 map({ "n", "x" }, "<leader>ai", "<cmd>CodeCompanion<cr>", "CodeCompanion Inline")
 map("x", "<leader>ad", "<cmd>CodeCompanionChat Add<cr>", "Add Selection to CodeCompanion Chat")
-map("x", "<leader>ae", "<cmd>CodeCompanion /explain<cr>", "Explain Selected Code")
+map("x", "<leader>ae", "<cmd>CodeCompanion /brief<cr>", "Explain Selected Code (Brief)")
+map("x", "<leader>a/", "<cmd>CodeCompanion /comment<cr>", "Add Comments to Selection")
 map("x", "<leader>af", "<cmd>CodeCompanion /fix<cr>", "Fix Selected Code")
 map("x", "<leader>at", "<cmd>CodeCompanion /tests<cr>", "Generate Tests")
 map("n", "<leader>ag", "<cmd>CodeCompanion /commit<cr>", "Generate Git Commit Message")
