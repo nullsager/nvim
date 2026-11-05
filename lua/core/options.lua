@@ -25,19 +25,24 @@ vim.o.winborder = "single"
 -- 剪贴板与滚动
 -- ---------------------------------------------------------
 -- 本地使用 wl-copy/xclip；SSH 里的 Neovim 没有远程桌面剪贴板，改用
--- OSC 52 让终端把复制内容转发到本地系统剪贴板。
--- 只用 OSC 52 复制；粘贴读 Neovim 自己的寄存器。很多终端不支持 / 禁止
--- OSC 52 读取剪贴板，配合 unnamedplus 时每次 p 都会卡住等终端响应。
--- 从本地粘贴进来用终端自带的粘贴（Ctrl+Shift+V）。
+-- OSC 52 让终端转发，和本地系统剪贴板保持统一。
+-- 读取只在 kitty 里启用（需要 kitty.conf 的 clipboard_control 允许）。其他终端
+-- 可能不支持 / 禁止 OSC 52 读取，配合 unnamedplus 时每次 p 都会卡住等终端响应，
+-- 所以仍只用 OSC 52 复制，粘贴读 Neovim 自己的寄存器；从本地粘贴进来用终端
+-- 自带的粘贴（Ctrl+Shift+V）。
 if vim.env.SSH_TTY or vim.env.SSH_CONNECTION then
   local osc52 = require("vim.ui.clipboard.osc52")
-  local function paste()
+  local function paste_from_register()
     return { vim.fn.split(vim.fn.getreg('"'), "\n"), vim.fn.getregtype('"') }
   end
+  local can_read = vim.env.TERM == "xterm-kitty"
   vim.g.clipboard = {
-    name = "OSC 52 (copy only)",
+    name = can_read and "OSC 52" or "OSC 52 (copy only)",
     copy = { ["+"] = osc52.copy("+"), ["*"] = osc52.copy("*") },
-    paste = { ["+"] = paste, ["*"] = paste },
+    paste = {
+      ["+"] = can_read and osc52.paste("+") or paste_from_register,
+      ["*"] = can_read and osc52.paste("*") or paste_from_register,
+    },
   }
 end
 vim.opt.clipboard:append("unnamedplus")
